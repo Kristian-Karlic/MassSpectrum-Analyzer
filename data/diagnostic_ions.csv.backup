@@ -1,0 +1,52 @@
+Name,HTML Name,Mass,Color
+NulOAcAc,NulOAcAc,317.1338,#ff007f
+NulOAcAc-H2O,NulOAcAc–H<sub>2</sub>O,299.1231,#ff007f
+NulO,NulO,233.1124268,#ff007f
+HexNulOAc,HexNulOAc,479.1855,#ff007f
+HexHexNulOAc,HexHexNulOAc,641.2380981,#ff007f
+HexNAcHexNulOAc,HexNAcHexNulOAc,682.2678833,#ff007f
+HexNAcHexHexNulOAcAc,HexNAcHexHexNulOAcAc,844.3167114,#ff007f
+dHexNAc,dHexNAc,188.09,#ff007f
+HexNAcA,HexNAcA,218.0649,#ff007f
+dHexNAc-H2O,dHexNAc–H<sub>2</sub>O,170.0809,#ff007f
+HexNAcA-AETMA,HexNAcA-AETMA,243.0968,#ff007f
+HexNAcA-dHexNAc-AETMA,HexNAcA-dHexNAc-AETMA,430.1807,#ff007f
+HexNAc,HexNAc,204.0866485,#ff007f
+Hex,Hex,163.0600994,#ff007f
+GlcNAc3NAcA4OAc,GlcNAc3NAcA4OAc,301.1030269,#ff007f
+GlcNAc3NAcA,GlcNAc3NAcA,259.0924622,#ff007f
+dehydrobiotin,dehydrobiotin,227.085,#ff007f
+oxonium-biotin,oxonium-biotin,284.143,#ff007f
+HexNAcA-dHexNAc,HexNAcA-dHexNAc,405.1502,#ff007f
+HexNAcA-dHexNAc2,HexNAcA-dHexNAc<sub>2,592.2354,#ff007f
+HexNAcA-dHexNAc-HexNAc,HexNAcA-dHexNAc-HexNAc,608.2304,#ff007f
+HexNAcA-dHexNAc2-HexNAc,HexNAcA-dHexNAc<sub>2</sub>-HexNAc,795.3147,#ff007f
+Hex-HexNAc,Hex-HexNAc,366.14,#ff007f
+NeuAc,NeuAc,292.1027,#ff007f
+NeuAc – H2O,NeuAc–H<sub>2</sub>O,274.0921,#ff007f
+HexNAc – C2H4O2,HexNAc – C2H4O2,144.066,#ff007f
+HexNAc – CH6O3,HexNAc – CH6O3,138.055,#ff007f
+HexNAc – H2O,HexNAc–H<sub>2</sub>O,186.076,#ff007f
+HexNAc – 2H2O,HexNAc–2H<sub>2</sub>O,168.066,#ff007f
+HexNAc – C2H6O3,HexNAc – C2H6O3,126.055,#ff007f
+NeuAc–2H2O,NeuAc –2 H2O,256.0816,#ff007f
+NeuAc–3H2O,NeuAc–2H2O,238.071,#ff007f
+A,A,44.05,#ff007f
+R,R,129.114,#ff007f
+N,N,87.056,#ff007f
+D,D,88.04,#ff007f
+C,C,76.022,#ff007f
+E,E,102.056,#ff007f
+Q,Q,101.071,#ff007f
+G,G,30.034,#ff007f
+H,H,110.072,#ff007f
+I/L/J,I/L/J,86.097,#ff007f
+K,K,101.108,#ff007f
+M,M,104.053,#ff007f
+F,F,120.081,#ff007f
+P,P,70.066,#ff007f
+S,S,60.045,#ff007f
+T,T,74.061,#ff007f
+W,W,159.092,#ff007f
+Y,Y,136.076,#ff007f
+V,V,72.081,#ff007f

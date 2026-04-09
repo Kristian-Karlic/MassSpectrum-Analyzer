@@ -1,0 +1,21 @@
+{
+  "AETMA": 84.1054,
+  "Acetyl": 42.0106,
+  "Ammonium": 0.0,
+  "Carbamidomethyl": 57.02146,
+  "Deamidation": 0.984,
+  "Dimethylation": 28.0313,
+  "Hex": 162.0528,
+  "HexNAc": 203.0794,
+  "MOD:00135": 0.0,
+  "MOD:00299": 0.0,
+  "Methylation": 14.0157,
+  "NeuAc": 291.0954,
+  "NeuGc": 307.0903,
+  "Oxidation": 15.9949,
+  "Oxidation (M": 15.9949,
+  "Phospho": 79.9663,
+  "Sulfo": 79.9568,
+  "Trimethylation": 42.047,
+  "dHex": 146.0579
+}

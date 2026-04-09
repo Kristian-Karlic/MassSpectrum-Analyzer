@@ -1,0 +1,2 @@
+pyinstaller MassSpectrumAnalyzer.spec --noconfirm 2>&1
+for compiling .exe

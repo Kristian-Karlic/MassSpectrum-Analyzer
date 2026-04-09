@@ -1,0 +1,107 @@
+{
+  "HCD-Glyco": {
+    "normal": [
+      "b",
+      "y",
+      "MH"
+    ],
+    "neutral": [
+      "y-H2O",
+      "a-H2O",
+      "b-H2O",
+      "MH-H2O",
+      "MH-NH3"
+    ],
+    "custom_ions": [],
+    "diagnostic_ions": [
+      {
+        "Name": "NeuAc–3H2O",
+        "HTML Name": "NeuAc–2H2O",
+        "Mass": 238.071,
+        "Color": "#000000"
+      },
+      {
+        "Name": "NeuAc–2H2O",
+        "HTML Name": "NeuAc –2 H2O",
+        "Mass": 256.0816,
+        "Color": "#000000"
+      },
+      {
+        "Name": "HexNAc – C2H6O3",
+        "HTML Name": "HexNAc – C2H6O3",
+        "Mass": 126.055,
+        "Color": "#000000"
+      },
+      {
+        "Name": "HexNAc – 2H2O",
+        "HTML Name": "HexNAc–2H<sub>2</sub>O",
+        "Mass": 168.066,
+        "Color": "#000000"
+      },
+      {
+        "Name": "HexNAc – CH6O3",
+        "HTML Name": "HexNAc – CH6O3",
+        "Mass": 138.055,
+        "Color": "#000000"
+      },
+      {
+        "Name": "HexNAc – H2O",
+        "HTML Name": "HexNAc–H<sub>2</sub>O",
+        "Mass": 186.076,
+        "Color": "#000000"
+      },
+      {
+        "Name": "HexNAc – C2H4O2",
+        "HTML Name": "HexNAc – C2H4O2",
+        "Mass": 144.066,
+        "Color": "#000000"
+      },
+      {
+        "Name": "NeuAc – H2O",
+        "HTML Name": "NeuAc–H<sub>2</sub>O",
+        "Mass": 274.0921,
+        "Color": "#000000"
+      },
+      {
+        "Name": "NeuAc",
+        "HTML Name": "NeuAc",
+        "Mass": 292.1027,
+        "Color": "#000000"
+      },
+      {
+        "Name": "Hex-HexNAc",
+        "HTML Name": "Hex-HexNAc",
+        "Mass": 366.14,
+        "Color": "#000000"
+      },
+      {
+        "Name": "HexNAc",
+        "HTML Name": "HexNAc",
+        "Mass": 204.0866485,
+        "Color": "#ff007f"
+      },
+      {
+        "Name": "Hex",
+        "HTML Name": "Hex",
+        "Mass": 163.0600994,
+        "Color": "#ff007f"
+      }
+    ]
+  },
+  "HCD-NL": {
+    "normal": [
+      "b",
+      "y",
+      "MH"
+    ],
+    "neutral": [
+      "MH-H2O",
+      "MH-NH3"
+    ],
+    "custom_ions": [],
+    "diagnostic_ions": [],
+    "enable_mod_nl": true,
+    "enable_labile_losses": false,
+    "enable_remainder_ions": false
+  }
+}

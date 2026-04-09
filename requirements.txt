@@ -1,0 +1,27 @@
+# Mass Spectrum Analyzer - Required Dependencies
+# Install with: pip install -r requirements.txt
+
+# GUI Framework
+PyQt6>=6.4.0
+PyQt6-WebEngine>=6.4.0      # For interactive HTML/Plotly views
+
+# Data Processing
+pandas>=1.5.0
+numpy>=1.23.0
+
+# Visualization
+matplotlib>=3.6.0
+pyqtgraph>=0.13.0
+plotly>=5.15.0
+
+# Mass Spectrometry
+pymzml>=2.5.0
+
+# .NET Integration (for ThermoFisher raw file support)
+pythonnet>=3.0.0
+
+# PDF Export 
+reportlab>=4.0.0
+
+# Progress Bars
+tqdm>=4.64.0

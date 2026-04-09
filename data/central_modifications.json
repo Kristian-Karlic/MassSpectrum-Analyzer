@@ -1,0 +1,1514 @@
+{
+  "+-17.0266": {
+    "labile_loss": false,
+    "mass": -17.02655,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "+0.9840": {
+    "labile_loss": false,
+    "mass": 0.98402,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "+102.1154": {
+    "labile_loss": false,
+    "mass": 102.11542,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "+1054.3700": {
+    "labile_loss": true,
+    "mass": 1054.37,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1095.3966": {
+    "labile_loss": true,
+    "mass": 1095.3966,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+112.1367": {
+    "labile_loss": true,
+    "mass": 112.1367,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1200.4279": {
+    "labile_loss": true,
+    "mass": 1200.4279,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1216.4229": {
+    "labile_loss": true,
+    "mass": 1216.4229,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1241.4545": {
+    "labile_loss": true,
+    "mass": 1241.4545,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1257.4494": {
+    "labile_loss": true,
+    "mass": 1257.4494,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1298.4760": {
+    "labile_loss": true,
+    "mass": 1298.476,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1362.4808": {
+    "labile_loss": true,
+    "mass": 1362.4808,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1378.4757": {
+    "labile_loss": true,
+    "mass": 1378.4757,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1387.5124": {
+    "labile_loss": true,
+    "mass": 1387.5124,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1403.5073": {
+    "labile_loss": true,
+    "mass": 1403.5073,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1419.5022": {
+    "labile_loss": true,
+    "mass": 1419.5022,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1444.5339": {
+    "labile_loss": true,
+    "mass": 1444.5339,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1460.5288": {
+    "labile_loss": true,
+    "mass": 1460.5288,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1501.5553": {
+    "labile_loss": true,
+    "mass": 1501.5553,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1540.5285": {
+    "labile_loss": true,
+    "mass": 1540.5285,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1548.5448": {
+    "labile_loss": true,
+    "mass": 1548.5448,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1549.5652": {
+    "labile_loss": true,
+    "mass": 1549.5652,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1564.5397": {
+    "labile_loss": true,
+    "mass": 1564.5397,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1565.5601": {
+    "labile_loss": true,
+    "mass": 1565.5601,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1581.5551": {
+    "labile_loss": true,
+    "mass": 1581.5551,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1589.5714": {
+    "labile_loss": true,
+    "mass": 1589.5714,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1605.5663": {
+    "labile_loss": true,
+    "mass": 1605.5663,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1606.5867": {
+    "labile_loss": true,
+    "mass": 1606.5867,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1622.5816": {
+    "labile_loss": true,
+    "mass": 1622.5816,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1647.6132": {
+    "labile_loss": true,
+    "mass": 1647.6132,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1663.6082": {
+    "labile_loss": true,
+    "mass": 1663.6082,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1694.6027": {
+    "labile_loss": true,
+    "mass": 1694.6027,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1702.5813": {
+    "labile_loss": true,
+    "mass": 1702.5813,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1704.6347": {
+    "labile_loss": true,
+    "mass": 1704.6347,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1710.5977": {
+    "labile_loss": true,
+    "mass": 1710.5977,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1726.5926": {
+    "labile_loss": true,
+    "mass": 1726.5926,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1727.6130": {
+    "labile_loss": true,
+    "mass": 1727.613,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1736.6497": {
+    "labile_loss": true,
+    "mass": 1736.6497,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1751.6242": {
+    "labile_loss": true,
+    "mass": 1751.6242,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1752.6446": {
+    "labile_loss": true,
+    "mass": 1752.6446,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1767.6191": {
+    "labile_loss": true,
+    "mass": 1767.6191,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1768.6395": {
+    "labile_loss": true,
+    "mass": 1768.6395,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1784.6344": {
+    "labile_loss": true,
+    "mass": 1784.6344,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1809.6661": {
+    "labile_loss": true,
+    "mass": 1809.6661,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1825.6610": {
+    "labile_loss": true,
+    "mass": 1825.661,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1850.6926": {
+    "labile_loss": true,
+    "mass": 1850.6926,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1864.6342": {
+    "labile_loss": true,
+    "mass": 1864.6342,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1866.6875": {
+    "labile_loss": true,
+    "mass": 1866.6875,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1872.6505": {
+    "labile_loss": true,
+    "mass": 1872.6505,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1888.6454": {
+    "labile_loss": true,
+    "mass": 1888.6454,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1897.6821": {
+    "labile_loss": true,
+    "mass": 1897.6821,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1907.7141": {
+    "labile_loss": true,
+    "mass": 1907.7141,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1913.6770": {
+    "labile_loss": true,
+    "mass": 1913.677,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1914.6974": {
+    "labile_loss": true,
+    "mass": 1914.6974,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1929.6719": {
+    "labile_loss": true,
+    "mass": 1929.6719,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1930.6923": {
+    "labile_loss": true,
+    "mass": 1930.6923,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1938.7087": {
+    "labile_loss": true,
+    "mass": 1938.7087,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1946.6873": {
+    "labile_loss": true,
+    "mass": 1946.6873,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1954.7036": {
+    "labile_loss": true,
+    "mass": 1954.7036,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1955.7240": {
+    "labile_loss": true,
+    "mass": 1955.724,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1970.6985": {
+    "labile_loss": true,
+    "mass": 1970.6985,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1971.7189": {
+    "labile_loss": true,
+    "mass": 1971.7189,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+1987.7138": {
+    "labile_loss": true,
+    "mass": 1987.7138,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2018.7084": {
+    "labile_loss": true,
+    "mass": 2018.7084,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2026.6870": {
+    "labile_loss": true,
+    "mass": 2026.687,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2028.7404": {
+    "labile_loss": true,
+    "mass": 2028.7404,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2034.7033": {
+    "labile_loss": true,
+    "mass": 2034.7033,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2043.7400": {
+    "labile_loss": true,
+    "mass": 2043.74,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2059.7349": {
+    "labile_loss": true,
+    "mass": 2059.7349,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2060.7553": {
+    "labile_loss": true,
+    "mass": 2060.7553,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2069.7669": {
+    "labile_loss": true,
+    "mass": 2069.7669,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2075.7298": {
+    "labile_loss": true,
+    "mass": 2075.7298,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2076.7502": {
+    "labile_loss": true,
+    "mass": 2076.7502,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2091.7248": {
+    "labile_loss": true,
+    "mass": 2091.7248,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2092.7452": {
+    "labile_loss": true,
+    "mass": 2092.7452,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2100.7615": {
+    "labile_loss": true,
+    "mass": 2100.7615,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2116.7564": {
+    "labile_loss": true,
+    "mass": 2116.7564,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2117.7768": {
+    "labile_loss": true,
+    "mass": 2117.7768,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2132.7513": {
+    "labile_loss": true,
+    "mass": 2132.7513,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2133.7717": {
+    "labile_loss": true,
+    "mass": 2133.7717,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2141.7880": {
+    "labile_loss": true,
+    "mass": 2141.788,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2149.7666": {
+    "labile_loss": true,
+    "mass": 2149.7666,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2157.7829": {
+    "labile_loss": true,
+    "mass": 2157.7829,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2174.7983": {
+    "labile_loss": true,
+    "mass": 2174.7983,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2188.7398": {
+    "labile_loss": true,
+    "mass": 2188.7398,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2204.7724": {
+    "labile_loss": true,
+    "mass": 2204.7724,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2205.7928": {
+    "labile_loss": true,
+    "mass": 2205.7928,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2206.8132": {
+    "labile_loss": true,
+    "mass": 2206.8132,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2215.8248": {
+    "labile_loss": true,
+    "mass": 2215.8248,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2220.7674": {
+    "labile_loss": true,
+    "mass": 2220.7674,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2221.7878": {
+    "labile_loss": true,
+    "mass": 2221.7878,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2222.8082": {
+    "labile_loss": true,
+    "mass": 2222.8082,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2236.7623": {
+    "labile_loss": true,
+    "mass": 2236.7623,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2237.7827": {
+    "labile_loss": true,
+    "mass": 2237.7827,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2238.8031": {
+    "labile_loss": true,
+    "mass": 2238.8031,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2245.7990": {
+    "labile_loss": true,
+    "mass": 2245.799,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2246.8194": {
+    "labile_loss": true,
+    "mass": 2246.8194,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2256.8514": {
+    "labile_loss": true,
+    "mass": 2256.8514,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2261.7939": {
+    "labile_loss": true,
+    "mass": 2261.7939,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2262.8143": {
+    "labile_loss": true,
+    "mass": 2262.8143,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2263.8347": {
+    "labile_loss": true,
+    "mass": 2263.8347,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2277.7888": {
+    "labile_loss": true,
+    "mass": 2277.7888,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2278.8092": {
+    "labile_loss": true,
+    "mass": 2278.8092,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2279.8296": {
+    "labile_loss": true,
+    "mass": 2279.8296,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2294.8041": {
+    "labile_loss": true,
+    "mass": 2294.8041,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2295.8245": {
+    "labile_loss": true,
+    "mass": 2295.8245,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2311.8195": {
+    "labile_loss": true,
+    "mass": 2311.8195,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2313.8728": {
+    "labile_loss": true,
+    "mass": 2313.8728,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2336.8511": {
+    "labile_loss": true,
+    "mass": 2336.8511,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2350.7926": {
+    "labile_loss": true,
+    "mass": 2350.7926,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2350.8304": {
+    "labile_loss": true,
+    "mass": 2350.8304,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2351.8508": {
+    "labile_loss": true,
+    "mass": 2351.8508,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2352.8460": {
+    "labile_loss": true,
+    "mass": 2352.846,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2361.8827": {
+    "labile_loss": true,
+    "mass": 2361.8827,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2366.8253": {
+    "labile_loss": true,
+    "mass": 2366.8253,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2382.8202": {
+    "labile_loss": true,
+    "mass": 2382.8202,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2391.8569": {
+    "labile_loss": true,
+    "mass": 2391.8569,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2393.8725": {
+    "labile_loss": true,
+    "mass": 2393.8725,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2407.8518": {
+    "labile_loss": true,
+    "mass": 2407.8518,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2423.8467": {
+    "labile_loss": true,
+    "mass": 2423.8467,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2424.8671": {
+    "labile_loss": true,
+    "mass": 2424.8671,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2425.8875": {
+    "labile_loss": true,
+    "mass": 2425.8875,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2432.8834": {
+    "labile_loss": true,
+    "mass": 2432.8834,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2434.8991": {
+    "labile_loss": true,
+    "mass": 2434.8991,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2439.8416": {
+    "labile_loss": true,
+    "mass": 2439.8416,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2440.8620": {
+    "labile_loss": true,
+    "mass": 2440.862,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2448.8784": {
+    "labile_loss": true,
+    "mass": 2448.8784,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2457.8774": {
+    "labile_loss": true,
+    "mass": 2457.8774,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2459.9307": {
+    "labile_loss": true,
+    "mass": 2459.9307,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2481.8886": {
+    "labile_loss": true,
+    "mass": 2481.8886,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2482.9090": {
+    "labile_loss": true,
+    "mass": 2482.909,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2498.9039": {
+    "labile_loss": true,
+    "mass": 2498.9039,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2553.9097": {
+    "labile_loss": true,
+    "mass": 2553.9097,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2569.9046": {
+    "labile_loss": true,
+    "mass": 2569.9046,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2570.9250": {
+    "labile_loss": true,
+    "mass": 2570.925,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2580.9570": {
+    "labile_loss": true,
+    "mass": 2580.957,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2585.8996": {
+    "labile_loss": true,
+    "mass": 2585.8996,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2586.9200": {
+    "labile_loss": true,
+    "mass": 2586.92,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2596.9519": {
+    "labile_loss": true,
+    "mass": 2596.9519,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2601.8945": {
+    "labile_loss": true,
+    "mass": 2601.8945,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2619.9302": {
+    "labile_loss": true,
+    "mass": 2619.9302,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2621.9836": {
+    "labile_loss": true,
+    "mass": 2621.9836,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2627.9465": {
+    "labile_loss": true,
+    "mass": 2627.9465,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2642.9462": {
+    "labile_loss": true,
+    "mass": 2642.9462,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2643.9414": {
+    "labile_loss": true,
+    "mass": 2643.9414,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2658.9411": {
+    "labile_loss": true,
+    "mass": 2658.9411,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2659.9363": {
+    "labile_loss": true,
+    "mass": 2659.9363,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2674.9360": {
+    "labile_loss": true,
+    "mass": 2674.936,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2676.9516": {
+    "labile_loss": true,
+    "mass": 2676.9516,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2701.9833": {
+    "labile_loss": true,
+    "mass": 2701.9833,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2715.9625": {
+    "labile_loss": true,
+    "mass": 2715.9625,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2716.9829": {
+    "labile_loss": true,
+    "mass": 2716.9829,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2717.9782": {
+    "labile_loss": true,
+    "mass": 2717.9782,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2731.9575": {
+    "labile_loss": true,
+    "mass": 2731.9575,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2732.9779": {
+    "labile_loss": true,
+    "mass": 2732.9779,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2747.9524": {
+    "labile_loss": true,
+    "mass": 2747.9524,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2756.9891": {
+    "labile_loss": true,
+    "mass": 2756.9891,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2772.9840": {
+    "labile_loss": true,
+    "mass": 2772.984,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2788.9789": {
+    "labile_loss": true,
+    "mass": 2788.9789,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2789.9993": {
+    "labile_loss": true,
+    "mass": 2789.9993,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2804.9738": {
+    "labile_loss": true,
+    "mass": 2804.9738,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2805.9942": {
+    "labile_loss": true,
+    "mass": 2805.9942,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2861.0001": {
+    "labile_loss": true,
+    "mass": 2861.0001,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2864.0361": {
+    "labile_loss": true,
+    "mass": 2864.0361,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2876.9950": {
+    "labile_loss": true,
+    "mass": 2876.995,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2878.0154": {
+    "labile_loss": true,
+    "mass": 2878.0154,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2892.9899": {
+    "labile_loss": true,
+    "mass": 2892.9899,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2894.0103": {
+    "labile_loss": true,
+    "mass": 2894.0103,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2896.0511": {
+    "labile_loss": true,
+    "mass": 2896.0511,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+29.0391": {
+    "labile_loss": false,
+    "mass": 29.039125,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "+2908.9848": {
+    "labile_loss": true,
+    "mass": 2908.9848,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2910.0052": {
+    "labile_loss": true,
+    "mass": 2910.0052,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2919.0419": {
+    "labile_loss": true,
+    "mass": 2919.0419,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2921.0576": {
+    "labile_loss": true,
+    "mass": 2921.0576,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2935.0368": {
+    "labile_loss": true,
+    "mass": 2935.0368,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2937.0776": {
+    "labile_loss": true,
+    "mass": 2937.0776,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2946.0892": {
+    "labile_loss": true,
+    "mass": 2946.0892,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2951.0317": {
+    "labile_loss": true,
+    "mass": 2951.0317,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2952.0521": {
+    "labile_loss": true,
+    "mass": 2952.0521,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+2967.0267": {
+    "labile_loss": true,
+    "mass": 2967.0267,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3007.0580": {
+    "labile_loss": true,
+    "mass": 3007.058,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3009.0736": {
+    "labile_loss": true,
+    "mass": 3009.0736,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3023.0529": {
+    "labile_loss": true,
+    "mass": 3023.0529,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3025.0685": {
+    "labile_loss": true,
+    "mass": 3025.0685,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3039.0478": {
+    "labile_loss": true,
+    "mass": 3039.0478,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3048.0845": {
+    "labile_loss": true,
+    "mass": 3048.0845,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3055.0427": {
+    "labile_loss": true,
+    "mass": 3055.0427,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3064.0794": {
+    "labile_loss": true,
+    "mass": 3064.0794,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3080.0743": {
+    "labile_loss": true,
+    "mass": 3080.0743,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3081.0947": {
+    "labile_loss": true,
+    "mass": 3081.0947,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3096.0693": {
+    "labile_loss": true,
+    "mass": 3096.0693,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3147.1152": {
+    "labile_loss": true,
+    "mass": 3147.1152,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3155.1315": {
+    "labile_loss": true,
+    "mass": 3155.1315,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3210.1373": {
+    "labile_loss": true,
+    "mass": 3210.1373,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3226.1323": {
+    "labile_loss": true,
+    "mass": 3226.1323,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3228.1731": {
+    "labile_loss": true,
+    "mass": 3228.1731,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3229.1683": {
+    "labile_loss": true,
+    "mass": 3229.1683,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3242.1272": {
+    "labile_loss": true,
+    "mass": 3242.1272,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3276.1578": {
+    "labile_loss": true,
+    "mass": 3276.1578,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3284.1741": {
+    "labile_loss": true,
+    "mass": 3284.1741,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3372.1902": {
+    "labile_loss": true,
+    "mass": 3372.1902,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3405.2004": {
+    "labile_loss": true,
+    "mass": 3405.2004,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3421.1953": {
+    "labile_loss": true,
+    "mass": 3421.1953,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3432.2477": {
+    "labile_loss": true,
+    "mass": 3432.2477,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3446.2269": {
+    "labile_loss": true,
+    "mass": 3446.2269,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3448.2426": {
+    "labile_loss": true,
+    "mass": 3448.2426,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3462.2219": {
+    "labile_loss": true,
+    "mass": 3462.2219,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+349.1373": {
+    "labile_loss": true,
+    "mass": 349.1373,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3517.2277": {
+    "labile_loss": true,
+    "mass": 3517.2277,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3533.2226": {
+    "labile_loss": true,
+    "mass": 3533.2226,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3549.2175": {
+    "labile_loss": true,
+    "mass": 3549.2175,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3575.2695": {
+    "labile_loss": true,
+    "mass": 3575.2695,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3591.2644": {
+    "labile_loss": true,
+    "mass": 3591.2644,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3594.3005": {
+    "labile_loss": true,
+    "mass": 3594.3005,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3607.2594": {
+    "labile_loss": true,
+    "mass": 3607.2594,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3663.2856": {
+    "labile_loss": true,
+    "mass": 3663.2856,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3679.2805": {
+    "labile_loss": true,
+    "mass": 3679.2805,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3704.3121": {
+    "labile_loss": true,
+    "mass": 3704.3121,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3720.3070": {
+    "labile_loss": true,
+    "mass": 3720.307,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3737.3224": {
+    "labile_loss": true,
+    "mass": 3737.3224,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3753.3173": {
+    "labile_loss": true,
+    "mass": 3753.3173,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3769.3122": {
+    "labile_loss": true,
+    "mass": 3769.3122,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+3797.3799": {
+    "labile_loss": true,
+    "mass": 3797.3799,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+4028.4178": {
+    "labile_loss": true,
+    "mass": 4028.4178,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+406.1587": {
+    "labile_loss": true,
+    "mass": 406.1587,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+4118.4495": {
+    "labile_loss": true,
+    "mass": 4118.4495,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+4307.5496": {
+    "labile_loss": true,
+    "mass": 4307.5496,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+4393.5500": {
+    "labile_loss": true,
+    "mass": 4393.55,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+44.0262": {
+    "labile_loss": false,
+    "mass": 44.0262,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "+552.2167": {
+    "labile_loss": true,
+    "mass": 552.2167,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+56.0626": {
+    "labile_loss": false,
+    "mass": 56.0626,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "+568.2116": {
+    "labile_loss": true,
+    "mass": 568.2116,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+730.2644": {
+    "labile_loss": true,
+    "mass": 730.2644,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+85.0528": {
+    "labile_loss": false,
+    "mass": 85.052765,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "+85.1127": {
+    "labile_loss": false,
+    "mass": 85.11268,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "+876.3223": {
+    "labile_loss": true,
+    "mass": 876.3223,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "+892.3172": {
+    "labile_loss": true,
+    "mass": 892.3172,
+    "neutral_losses": "",
+    "remainder_ions": "203.0794"
+  },
+  "14.0192": {
+    "labile_loss": false,
+    "mass": 14.0192,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "21.9463": {
+    "labile_loss": false,
+    "mass": 21.9463,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "AETMA": {
+    "labile_loss": false,
+    "mass": 84.1054,
+    "neutral_losses": "59.07377",
+    "remainder_ions": ""
+  },
+  "ATCC19606_gylcan": {
+    "labile_loss": false,
+    "mass": 1030.3596,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "Acetylation": {
+    "labile_loss": false,
+    "mass": 42.0106,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "BAL062": {
+    "labile_loss": false,
+    "mass": 843.3116,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "Biotin": {
+    "labile_loss": false,
+    "mass": 463.2364,
+    "neutral_losses": "311.142,283.136",
+    "remainder_ions": ""
+  },
+  "C38H60O26N4": {
+    "labile_loss": false,
+    "mass": 988.3491,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "C40H62O27N4": {
+    "labile_loss": false,
+    "mass": 1030.3596,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "Carbamidomethyl": {
+    "labile_loss": false,
+    "mass": 57.02146,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "D1279779 Glycan": {
+    "labile_loss": true,
+    "mass": 794.3066,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "Dimethylation": {
+    "labile_loss": false,
+    "mass": 28.0313,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "No Modification": {
+    "labile_loss": false,
+    "mass": 0.0,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "Oxidation": {
+    "labile_loss": false,
+    "mass": 15.9949,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "Phospho": {
+    "labile_loss": false,
+    "mass": 79.9663,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  }
+}
