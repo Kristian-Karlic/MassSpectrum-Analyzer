@@ -16,6 +16,7 @@ plotly>=5.15.0
 
 # Mass Spectrometry
 pymzml>=2.5.0
+psm_utils>=0.8.0
 
 # .NET Integration (for ThermoFisher raw file support)
 pythonnet>=3.0.0
