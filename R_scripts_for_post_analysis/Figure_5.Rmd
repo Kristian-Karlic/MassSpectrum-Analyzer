@@ -1,0 +1,1083 @@
+---
+title: 'C-tails'
+author: "Kristian Karlic"
+date: "6/12/2024"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+editor_options: 
+  chunk_output_type: console
+---
+#Installing and loading required packages
+``` {r setup, include = FALSE}
+#List of packages required for the code
+required_Packages_Install <- c("RColorBrewer", "readxl", "dplyr", "broom", "tidyr",
+                               "magrittr", "devtools", "scales", "purrr", "stringr",
+                               "ggrepel", "gridExtra", "Peptides","plyr", "ggstance",
+                               "UpSetR", "ggpubr", "viridis", "openxlsx","stringr",
+                               "matrixStats", "ggprism", "patchwork", "BiocManager",
+                               "UpSetR", "ggupset", "eulerr", 'ggalluvial', 'reshape2',
+                               'cowplot', "ggVennDiagram", "forcats", "tibble","readr", "ggplot2", "extrafont", "ggthemes")
+
+
+
+#Checks if packages are installed, and will download if needed otherwise will load them in
+for(Package in required_Packages_Install){
+  if(!require(Package,character.only = TRUE)) { 
+      install.packages(Package, dependencies=TRUE)
+  }
+  library(Package,character.only = TRUE)
+}
+
+
+rstudioapi::writeRStudioPreference("data_viewer_max_columns", 1000L)
+cbPalette <- c("#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3", "#A6D854", "#FFD92F", "#E5C494", "#B3B3B3")
+knitr::opts_chunk$set(include = FALSE)
+
+
+#function to label fragment ion types
+classify_fragment <- function(ion_type, base_type, fragment_sequence, modified_fragment) {
+  
+  ion_type <- trimws(as.character(ion_type))
+  base_type <- trimws(as.character(base_type))
+  modified_fragment <- trimws(as.character(modified_fragment))
+  
+  # Check for remainder ions
+  if (ion_type %in% c("b^", "y^", "a^", "MH^")) {
+    return("Remainder_ion")
+  }
+  
+  # Check for labile ions
+  if (ion_type %in% c("b~", "y~", "a~", "MH~")) {
+    return("Labile_ion")
+  }
+  
+  # Check for standard b, y, a ions (exact match)
+  if (ion_type %in% c("b", "y", "a") || base_type %in% c("b", "y", "a")) {
+    
+    # Use modified_fragment column, not fragment_sequence
+    bracket_values <- str_match_all(modified_fragment, "\\[([^\\]]+)\\]")[[1]]
+    
+    if (nrow(bracket_values) > 0) {
+      numeric_vals <- suppressWarnings(
+        as.numeric(str_replace(bracket_values[, 2], "^\\+", ""))
+      )
+      numeric_vals <- numeric_vals[!is.na(numeric_vals)]
+      
+      if (length(numeric_vals) > 0 && any(abs(numeric_vals) > 205)) {
+        return("Intact_modified_ion")
+      } else {
+        return("Non-modified_ion")
+      }
+    } else {
+      return("Non-modified_ion")
+    }
+  }
+  
+  return(NA_character_)
+}
+
+# Recode helper
+recode_groups <- function(df) {
+  df %>%
+    mutate(group = recode(group,
+      "HCD_20" = "CE - 20%",
+      "HCD_25" = "CE - 25%",
+      "HCD_30" = "CE - 30%",
+      "HCD_35" = "CE - 35%",
+      "HCD_40" = "CE - 40%"
+    ))
+}
+
+recode_groups_2 <- function(df) {
+  df %>%
+    mutate(group = recode(group,
+      "HCD_20" = "20",
+      "HCD_25" = "25",
+      "HCD_30" = "30",
+      "HCD_35" = "35",
+      "HCD_40" = "40"
+    ))
+}
+
+
+base_size           <- 12
+title_text_rel_size <- 2
+axis_text_rel_size  <- 1
+
+my_theme <- theme_foundation(base_size = base_size, base_family = "sans") +
+  theme(
+    panel.grid.major  = element_line(colour = "grey90"),
+    panel.grid.minor  = element_blank(),
+    panel.border      = element_rect(colour = "grey70", fill = NA),
+    panel.background  = element_blank(),
+    plot.background   = element_blank(),
+    text              = element_text(colour = "black"),
+    plot.title        = element_text(
+                          face = "bold",
+                          size = rel((title_text_rel_size + base_size) / base_size),
+                          hjust = 0.5),
+    axis.text         = element_text(
+                          size   = rel((axis_text_rel_size + base_size) / base_size),
+                          colour = "black"),
+    axis.title        = element_text(face = "bold", colour = "black"),
+    strip.text        = element_text(
+                          face   = "bold",
+                          size   = rel((title_text_rel_size + base_size) / base_size),
+                          colour = "black"),
+    strip.background  = element_blank(),
+    legend.text       = element_text(
+                          size   = rel((axis_text_rel_size + base_size) / base_size),
+                          colour = "black"),
+    legend.title      = element_text(
+                          face   = "bold",
+                          size   = rel((axis_text_rel_size + base_size) / base_size)),
+    legend.position        = "right",
+    legend.background      = element_rect(fill = "white", colour = "grey80"),
+    legend.key             = element_rect(fill = "white")
+  )
+
+```
+
+#Import data
+```{r}
+####Intensity anaylsis 
+data_fragments <- read.csv(file = "rescoring_results_fragments.csv", header = TRUE)
+data <- read.csv(file = "rescoring_results.csv", header = TRUE)
+
+#Bind some meta data from data to long format fragments
+data_fragments <- data_fragments %>%
+  left_join(
+    data %>% select(Spectrum.file, index, Header, Total_Intensity, Max_Intensity, Glycans, Assigned.Modifications, Sequence..unformatted.),
+    by = c(
+      "spectrum_file" = "Spectrum.file",
+      "scan_index" = "index"
+    )
+  )
+
+#Groups to keep
+keep <- c("HCD_20", "HCD_25", "HCD_30", "HCD_35", "HCD_40")
+
+
+data_filtered <- data_fragments %>%
+  filter(group %in% keep) %>%
+  rowwise() %>%
+  filter(any(as.numeric(str_extract_all(parsed_modifications, "\\d+\\.?\\d*")[[1]]) > 100)) %>% #Filtering for Only Glyco mods 
+  ungroup() %>%
+  filter(grepl("hcd", Header, ignore.case = TRUE))%>%
+  filter(
+    !(grepl("hcd35.00|hcd36.00", Header, ignore.case = TRUE) & group != "HCD_35")) #Filtering header for only correct scans
+```
+
+
+
+#Panel B Ion intensities
+```{r}
+fragment_colours <- c(
+  "Intact_modified_ion" = "#66C2A5",
+  "Remainder_ion"       = "#E78AC3",
+  "Labile_ion"          = "#FC8D62",
+  "Non-modified_ion"          = "steelblue")
+
+
+fragment_labels <- c(
+  "Intact_modified_ion" = "Modified Ion (+Intact Glycan)",
+  "Remainder_ion"       = "Remainder Ion (+203)",
+  "Labile_ion"          = "Labile Ion (+0)",
+  "Non-modified_ion" = "Non Modified Ion"
+
+)
+
+# Plot function — legend hidden, uses fixed colour scale
+make_pie_row <- function(data, meta, ion, title_label) {
+  plot_data <- data %>%
+    filter(base_type == ion) %>%
+    recode_groups()
+  
+  n_labels <- meta %>%
+    filter(base_type == ion) %>%
+    recode_groups() %>%
+    group_by(group) %>%
+    dplyr::summarise(n = n_distinct(Header), .groups = "drop")
+  
+  group_labels <- setNames(
+    paste0(n_labels$group, "\n(n = ", n_labels$n, ")"),
+    n_labels$group
+  )
+  
+  plot_data %>%
+    ggplot(aes(x = "", y = pct, fill = Fragment_type)) +
+    geom_bar(stat = "identity", width = 1, colour = "black", linewidth = 0.3) +
+    geom_text(
+      aes(label = pct_label),
+      position = position_stack(vjust = 0.5),
+      size = 3, fontface = "bold", colour = "black"
+    ) +
+    coord_polar(theta = "y") +
+    scale_fill_manual(
+      values = fragment_colours,
+      labels = fragment_labels,
+      name   = "Ion type",
+      drop   = FALSE
+    ) +
+    facet_wrap(~group, ncol = 5,
+               labeller = labeller(group = group_labels)) +
+    labs(title = title_label, x = NULL, y = NULL) +
+    theme_foundation(base_size = base_size, base_family = "sans") +
+    theme(
+      panel.grid.major  = element_blank(),
+      panel.grid.minor  = element_blank(),
+      panel.border      = element_blank(),
+      panel.background  = element_blank(),
+      text              = element_text(colour = "black"),
+      plot.title        = element_text(face = "bold",
+                            size = rel((title_text_rel_size + base_size) / base_size), hjust = 0.5),
+      axis.line         = element_blank(),
+      axis.ticks        = element_blank(),
+      axis.text         = element_blank(),
+      plot.background   = element_blank(),
+      strip.text        = element_text(face = "bold",
+                            size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      strip.background  = element_blank(),
+      legend.text       = element_text(size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      legend.title      = element_text(face = "bold",
+                            size = rel((axis_text_rel_size + base_size) / base_size)),
+      legend.position        = "bottom",
+      legend.background      = element_rect(fill = "white", colour = "grey80")
+    )
+}
+
+###### Figure 4C?
+#Finding peptides shared amongst all groups
+# ---- 1. Identify peptides shared across ALL four groups ---------------------
+shared_peptides <- data_filtered %>%
+  group_by(modified_peptide) %>%
+  dplyr::summarise(n_groups = n_distinct(group), .groups = "drop") %>%
+  filter(n_groups == 5) %>%
+  pull(modified_peptide)
+
+df_shared <- data_filtered %>%
+  filter(!grepl("Custom_Ion", neutral_loss))%>%
+  filter(!grepl("H2O|NH3", ion_type))
+
+df_shared$Fragment_type <- mapply(
+  classify_fragment,
+  df_shared$ion_type,
+  df_shared$base_type,
+  df_shared$fragment_sequence,
+  df_shared$modified_fragment  # <-- added this
+)
+
+
+df_shared <- df_shared %>%
+  #filter(peptide == "NVSWATGR") %>%
+  filter(!Fragment_type == "Non-modified_ion")
+
+# Sum intensities per peptide/group/replicate, then aggregate to mean across peptides
+p_A2_data <- df_shared %>%
+  group_by(Fragment_type, base_type, replicate, group) %>%
+  dplyr::summarise(sum_intensity = sum(intensity, na.rm = TRUE), .groups = "drop") %>%
+  group_by(base_type, Fragment_type, group) %>%
+  dplyr::summarise(mean_intensity = mean(sum_intensity, na.rm = TRUE), .groups = "drop") %>%
+  group_by(base_type, group) %>%        # <-- removed Group (not a column at this point)
+  mutate(
+    total     = sum(mean_intensity),
+    pct       = mean_intensity / total * 100,
+    pct_label = ifelse(pct >= 5, sprintf("%.1f%%", pct), "")
+  ) %>%
+  ungroup()
+
+# Build each row
+p_y  <- make_pie_row(p_A2_data, df_shared, "y",  "y-ions")
+p_b  <- make_pie_row(p_A2_data, df_shared, "b",  "b-ions")
+
+# Collect single shared legend using guide_area()
+p_combined <- p_y / p_b / guide_area() +
+  plot_layout(
+    heights = c(1, 1, 1, 0.15),  # small height for legend row
+    guides  = "collect"           # merge all legends into one
+  ) +
+  plot_annotation(
+    title = "Relative ion intensity (%) for glycopeptide N[Glycan]VSWATGR",
+    theme = theme(
+      plot.title = element_text(face = "bold", hjust = 0.5,
+                                size = rel((title_text_rel_size + base_size) / base_size))
+    )
+  )
+
+p_combined
+
+ggsave("b_y_ions_for_all_shared_N_glycopeptides.pdf",  p_combined, dpi = 600, width =9, height = 6,device = cairo_pdf)
+```
+
+```{r}
+# Plot function — bar chart version, same column names as pie version
+make_bar_row <- function(data, meta, title_label) {
+  plot_data <- data %>%
+    recode_groups() %>%
+    mutate(base_type = factor(base_type, levels = c("y", "b", "MH")))
+  
+  n_labels <- meta %>%
+    recode_groups() %>%
+    filter(base_type %in% c("y", "b", "MH")) %>%
+    group_by(group) %>%
+    dplyr::summarise(n = n_distinct(Header), .groups = "drop")
+  
+  group_labels <- setNames(
+    paste0(n_labels$group, "\n(n = ", n_labels$n, ")"),
+    n_labels$group
+  )
+  
+  plot_data %>%
+    mutate(Fragment_type = factor(Fragment_type, levels = names(fragment_colours))) %>%
+    ggplot(aes(x = base_type, y = pct, fill = Fragment_type)) +
+    geom_bar(stat = "identity", colour = "black", linewidth = 0.3) +
+    geom_text(
+      aes(label = ifelse(pct >= 5, sprintf("%.1f%%", pct), "")),
+      position = position_stack(vjust = 0.5),
+      size = 3,
+      colour = "black",
+      fontface = "bold"
+    ) +
+    scale_fill_manual(
+      values = fragment_colours,
+      labels = fragment_labels,
+      name   = "Ion type",
+      drop   = FALSE
+    ) +
+    scale_y_continuous(labels = scales::label_percent(scale = 1)) +
+    facet_wrap(
+      ~ group, ncol = 5,
+      labeller = labeller(group = group_labels)
+    ) +
+    labs(title = title_label, x = "Fragment ion", y = "Fragment Ion Relative Abundance (%)") +
+    theme_foundation(base_size = base_size, base_family = "sans") +
+    theme(
+      panel.grid.major  = element_line(colour = "grey90"),
+      panel.grid.minor  = element_blank(),
+      panel.border      = element_rect(colour = "grey70", fill = NA),
+      panel.background  = element_blank(),
+      text              = element_text(colour = "black"),
+      plot.title        = element_text(face = "bold",
+                            size = rel((title_text_rel_size + base_size) / base_size), hjust = 0.5),
+      axis.text         = element_text(
+                            size   = rel((axis_text_rel_size + base_size) / base_size),
+                            colour = "black"),
+      axis.title        = element_text(face = "bold", colour = "black"),
+      plot.background   = element_blank(),
+      strip.text        = element_text(face = "bold",
+                            size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      strip.background  = element_blank(),
+      legend.text       = element_text(size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      legend.title      = element_text(face = "bold",
+                            size = rel((axis_text_rel_size + base_size) / base_size)),
+      legend.position        = "bottom",
+      legend.background      = element_rect(fill = "white", colour = "grey80")
+    )
+}
+
+
+###### Figure 4C?
+#Finding peptides shared amongst all groups
+# ---- 1. Identify peptides shared across ALL four groups ---------------------
+shared_peptides <- data_filtered %>%
+  group_by(modified_peptide) %>%
+  dplyr::summarise(n_groups = n_distinct(group), .groups = "drop") %>%
+  filter(n_groups == 5) %>%
+  pull(modified_peptide)
+
+df_shared <- data_filtered %>%
+  filter(!grepl("Custom_Ion", neutral_loss))%>%
+  filter(!grepl("H2O|NH3", ion_type))
+
+df_shared$Fragment_type <- mapply(
+  classify_fragment,
+  df_shared$ion_type,
+  df_shared$base_type,
+  df_shared$fragment_sequence,
+  df_shared$modified_fragment  # <-- added this
+)
+
+write.xlsx(df_shared, file = "Table_4_Matched_ion_intensity_for_N_glycopeptides.xlsx")
+
+df_shared_1 <- df_shared %>%
+  #filter(peptide == "NVSWATGR") %>%
+  filter(!Fragment_type == "Non-modified_ion")
+
+# Sum intensities per peptide/group/replicate, then aggregate to mean across peptides
+p_A2_data <- df_shared_1 %>%
+  group_by(Fragment_type, base_type, replicate, group) %>%
+  dplyr::summarise(sum_intensity = sum(intensity, na.rm = TRUE), .groups = "drop") %>%
+  group_by(base_type, Fragment_type, group) %>%
+  dplyr::summarise(mean_intensity = mean(sum_intensity, na.rm = TRUE), .groups = "drop") %>%
+  group_by(base_type, group) %>%        # <-- removed Group (not a column at this point)
+  mutate(
+    total     = sum(mean_intensity),
+    pct       = mean_intensity / total * 100,
+    pct_label = ifelse(pct >= 5, sprintf("%.1f%%", pct), "")
+  ) %>%
+  ungroup()
+
+# ── Filter p_A2_data to y and b only, then plot ───────────────────────────────
+
+p_combined <- make_bar_row(
+  data        = p_A2_data %>% filter(base_type %in% c("y", "b", "MH")),
+  meta        = df_shared_1 %>% filter(base_type %in% c("y", "b", "MH")),
+  title_label = "Relative Ion Intensity of N-glycopeptides"
+)
+
+p_combined
+
+ggsave("b_y_ions_for_all_shared_N_glycopeptides.pdf", p_combined, dpi = 600, width = 7, height = 4, device = cairo_pdf)
+```
+
+#Coverage
+```{r}
+
+data_filtered <- data %>%
+  filter(!grepl("rev_", Protein)) %>%
+  filter(grepl("N", Mods..variable.)) %>%
+  filter(Peptide == "NVSWATGR")
+
+data_filtered$backbone_coverage_partial<- (data_filtered$backbone_coverage_partial/data_filtered$backbone_coverage_potential)*100
+data_filtered$backbone_coverage_intact <- (data_filtered$backbone_coverage_overall/data_filtered$backbone_coverage_potential)*100
+
+# ── Shared data prep ──────────────────────────────────────────────────────────
+
+
+coverage_long <- data_filtered %>%
+  select(Replicate, Group, Peptide, 
+         backbone_coverage_partial, backbone_coverage_intact, index, Spectrum.file) %>%
+  pivot_longer(
+    cols      = c(backbone_coverage_partial, backbone_coverage_intact),
+    names_to  = "coverage_type",
+    values_to = "coverage_pct"
+  ) %>%
+  mutate(
+    coverage_type = factor(
+      coverage_type,
+      levels = c("backbone_coverage_intact", "backbone_coverage_partial"),
+      labels = c("Intact (y/b/a)", "Partial Coverage (y/y*/b/b*/a/a*)")
+    )
+  )
+
+coverage_long_rep <- coverage_long %>%
+  group_by( Replicate, coverage_type) %>%
+  dplyr::summarise(coverage_pct = mean(coverage_pct))
+
+
+# ── N peptides per facet label ────────────────────────────────────────────────
+
+n_coverage <- coverage_long %>%
+  distinct(Peptide, Group, Replicate,  index, Spectrum.file) %>%
+  group_by(Group) %>%
+  dplyr::summarise(n_peptides = n(), .groups = "drop")
+
+
+# ── Boxplot ───────────────────────────────────────────────────────────────────
+
+p_coverage <- coverage_long %>%
+  ggplot(aes(x = coverage_type, y = coverage_pct, fill = coverage_type)) +
+  geom_boxplot(
+    colour   = "black",
+    linewidth = 0.4,
+    outlier.size  = 0.8,
+    outlier.alpha = 0.5
+  ) +
+  scale_fill_brewer(palette = "Set2", name = "Coverage type") +
+  scale_y_continuous(
+    labels = scales::label_percent(scale = 1),
+    limits = c(0, 100)
+  ) +
+  facet_wrap(
+    ~ Group, ncol = 5
+  ) +
+  labs(
+    title = "Backbone Sequence Coverage by Number of Modifications",
+    x     = NULL,
+    y     = "Backbone coverage (%)"
+  ) +
+  my_theme +
+  theme(
+    axis.text.x  = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+
+p_coverage
+
+
+ggsave("Figure4B_backbone_coverage.pdf",  p_coverage, dpi = 600, width =10, height = 6,device = cairo_pdf)
+
+
+```
+
+
+
+
+
+
+```{r}
+# Sum counts per peptide/group/replicate, then aggregate to mean across replicates
+p_A2_data <- df_shared %>%
+  group_by(Fragment_type, base_type, replicate, group) %>%
+  dplyr::summarise(n_ions = n(), .groups = "drop") %>%                          # COUNT rows
+  group_by(base_type, Fragment_type, group) %>%
+  dplyr::summarise(mean_n_ions = mean(n_ions, na.rm = TRUE), .groups = "drop") %>%  # mean across replicates
+  group_by(base_type, group) %>%
+  mutate(
+    total     = sum(mean_n_ions),
+    pct       = mean_n_ions / total * 100,
+    pct_label = ifelse(pct >= 5, sprintf("%.1f%%", pct), "")
+  ) %>%
+  ungroup()
+
+
+make_bar_row <- function(data, meta, ion, title_label) {
+  plot_data <- data %>%
+    filter(base_type == ion) %>%
+    recode_groups()
+  
+  n_labels <- meta %>%
+    filter(base_type == ion) %>%
+    recode_groups() %>%
+    group_by(group) %>%
+    dplyr::summarise(n = n_distinct(Header), .groups = "drop")
+  
+  group_labels <- setNames(
+    paste0(n_labels$group, "\n(n = ", n_labels$n, ")"),
+    n_labels$group
+  )
+  
+  plot_data %>%
+    ggplot(aes(x = Fragment_type, y = mean_n_ions, fill = Fragment_type)) +
+    geom_bar(stat = "identity", colour = "black", linewidth = 0.3) +
+    geom_text(
+      aes(label = pct_label),
+      vjust = -0.4,
+      size = 3, fontface = "bold", colour = "black"
+    ) +
+    scale_fill_manual(
+      values = fragment_colours,
+      labels = fragment_labels,
+      name   = "Ion type",
+      drop   = FALSE
+    ) +
+    scale_x_discrete(labels = fragment_labels) +
+    scale_y_continuous(limits = c(0, 105), expand = c(0, 0)) +
+    facet_wrap(~group, ncol = 5,
+               labeller = labeller(group = group_labels)) +
+    labs(title = title_label, x = NULL, y = "Ion count (%)") +
+    theme_foundation(base_size = base_size, base_family = "sans") +
+    theme(
+      panel.grid.major  = element_blank(),
+      panel.grid.minor  = element_blank(),
+      panel.border      = element_blank(),
+      panel.background  = element_blank(),
+      text              = element_text(colour = "black"),
+      plot.title        = element_text(face = "bold",
+                            size = rel((title_text_rel_size + base_size) / base_size), hjust = 0.5),
+      axis.line         = element_line(colour = "black", size = line_size),
+      axis.ticks        = element_line(colour = "black", size = line_size),
+      axis.title        = element_text(face = "bold", size = rel(1)),
+      axis.title.y      = element_text(angle = 90, vjust = 2),
+      axis.text         = element_text(face = "bold",
+                            size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      axis.text.x       = element_text(angle = 45, vjust = 1, hjust = 1),
+      plot.background   = element_blank(),
+      strip.text        = element_text(face = "bold",
+                            size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      strip.background  = element_blank(),
+      legend.text       = element_text(size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      legend.title      = element_text(face = "bold",
+                            size = rel((axis_text_rel_size + base_size) / base_size)),
+      legend.position        = "bottom",
+      legend.background      = element_rect(fill = "white", colour = "grey80")
+    )
+}
+
+# Build each row — just swap make_pie_row -> make_bar_row
+p_y <- make_bar_row(p_A2_data, df_shared, "y", "y-ions")
+p_b <- make_bar_row(p_A2_data, df_shared, "b", "b-ions")
+
+p_y
+p_b
+```
+
+
+#Annotated TIC by ion type 
+```{r}
+####Intensity anaylsis 
+
+df_shared <- data_filtered %>%
+  filter(!grepl("Custom_Ion", neutral_loss))%>%
+  filter(!grepl("H2O|NH3", ion_type))
+
+classify_fragment <- function(ion_type, base_type, fragment_sequence, modified_fragment) {
+  
+  ion_type <- trimws(as.character(ion_type))
+  base_type <- trimws(as.character(base_type))
+  modified_fragment <- trimws(as.character(modified_fragment))
+  
+  # Check for remainder ions (e.g. b^, b^², y^³)
+  if (grepl("\\^", ion_type) || ion_type %in% c("MH^")) {
+    return("Remainder_ion")
+  }
+  
+  # Check for labile ions (e.g. b~, b~², y~³)
+  if (grepl("~", ion_type)) {
+    return("Labile_ion")
+  }
+  
+  # Check for standard b, y, a ions (exact match)
+  if (ion_type %in% c("b", "y", "a", "MH") || base_type %in% c("b", "y", "a", "MH")) {
+    
+    bracket_values <- str_match_all(modified_fragment, "\\[([^\\]]+)\\]")[[1]]
+    
+    if (nrow(bracket_values) > 0) {
+      numeric_vals <- suppressWarnings(
+        as.numeric(str_replace(bracket_values[, 2], "^\\+", ""))
+      )
+      numeric_vals <- numeric_vals[!is.na(numeric_vals)]
+      
+      if (length(numeric_vals) > 0 && any(abs(numeric_vals) > 205)) {
+        return("Intact_modified_ion")
+      } else {
+        return("Non-modified_ion")
+      }
+    } else {
+      return("Non-modified_ion")
+    }
+  }
+  
+  return(NA_character_)
+}
+
+df_shared$Fragment_type <- mapply(
+  classify_fragment,
+  df_shared$ion_type,
+  df_shared$base_type,
+  df_shared$fragment_sequence,
+  df_shared$modified_fragment  # <-- added this
+)
+
+df_shared_plot <- df_shared %>%
+  filter(!grepl("MH", base_type))%>%
+  filter(!grepl("Non-modified_ion", Fragment_type)) 
+
+df_shared_plot <- df_shared_plot %>%
+  group_by(group, replicate, scan_index, spectrum_file) %>%
+  mutate(total_intensity_per_scan = sum(intensity, na.rm = TRUE)) %>%
+  ungroup()
+
+df_shared_plot <- df_shared_plot %>% 
+  mutate(Annotated_TIC = (intensity / Total_Intensity) * 100)
+
+
+df_shared_plot_rep <- df_shared_plot %>% 
+  group_by(group, Fragment_type, replicate) %>%
+  dplyr::summarise(mean_tic = n())
+
+df_shared_plot_mean <- df_shared_plot_rep %>% 
+  group_by(group, Fragment_type) %>%
+  dplyr::summarise(mean_tic = mean(mean_tic))
+
+df_shared_plot_mean <- df_shared_plot_mean %>%
+  mutate(group = recode(group, "HCD_20" = "20%"),
+         group = recode(group, "HCD_25" = "25%"),
+         group = recode(group, "HCD_30" = "30%"),
+         group = recode(group, "HCD_35" = "35%"),
+         group = recode(group, "HCD_40" = "40%"))
+
+df_shared_plot_rep <- df_shared_plot_rep %>%
+  mutate(group = recode(group, "HCD_20" = "20%"),
+         group = recode(group, "HCD_25" = "25%"),
+         group = recode(group, "HCD_30" = "30%"),
+         group = recode(group, "HCD_35" = "35%"),
+         group = recode(group, "HCD_40" = "40%"))
+
+p_A2 <- df_shared_plot_mean %>%
+ggplot(aes(x = group, y = mean_tic, fill = group, colour = group)) +
+  geom_boxplot(colour = "black", linewidth = 0.5, alpha = 0.5,
+               outlier.shape = 21, outlier.fill = "white", outlier.size = 2) +
+  geom_jitter(data = df_shared_plot_rep, aes(x=group, y=mean_tic, fill = group, colour =group),
+              width = 0.15, size = 1.5, alpha = 0.6) +
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 23, size = 3, fill = "white", colour = "black"
+  ) +
+  stat_summary(
+    fun.data = function(x) {
+      data.frame(
+        y = max(x) * 1.05,
+        label = paste0("n=", length(x))
+      )
+    },
+    geom = "text",
+    size = 3, fontface = "bold", colour = "black"
+  ) +
+  facet_wrap(~Fragment_type) +
+scale_fill_brewer(palette = "Set2") +
+scale_colour_brewer(palette = "Set2") +
+  labs(
+    title = NULL,
+    x     = "Collisional Energy (%)",
+    y     = "Annotated TIC (%)"
+  ) +
+    theme_foundation(base_size = base_size, base_family = "sans") +
+    theme(
+      panel.grid.major  = element_blank(),
+      panel.grid.minor  = element_blank(),
+      panel.border      = element_blank(),
+      panel.background  = element_blank(),
+      text              = element_text(colour = "black"),
+      plot.title        = element_text(face = "bold",
+                            size = rel((title_text_rel_size + base_size) / base_size), hjust = 0.5),
+      plot.subtitle     = element_text(hjust = 0.5, colour = "grey40"),
+      axis.line         = element_line(colour = "black", size = line_size),
+      axis.ticks        = element_line(colour = "black", size = line_size),
+      axis.title        = element_text(face = "bold", size = rel(1)),
+      axis.title.y      = element_text(angle = 90, vjust = 2),
+      axis.title.x      = element_text(vjust = -0.2),
+      axis.text         = element_text(face = "bold",
+                            size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      axis.text.x       = element_text(angle = 45, vjust = 1, hjust = 1),
+      plot.background   = element_blank(),
+      legend.text       = element_text(size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      legend.title      = element_text(face = "bold",
+                            size = rel((axis_text_rel_size + base_size) / base_size)),
+      legend.position   = "right",
+      legend.background = element_rect(fill = "white", colour = "grey80")
+    )
+p_A2
+
+ggsave("Annotated_TIC.pdf",  p_A2, dpi = 600, width =8, height = 5 ,device = cairo_pdf)
+```
+
+
+#Ox signal across CE
+#Annotated TIC by ion type 
+```{r}
+####Intensity anaylsis 
+
+df_shared <- data_filtered %>%
+  filter(grepl("Custom_Ion", neutral_loss))
+
+df_shared_plot <- df_shared %>%
+  group_by(group, replicate, scan_index, spectrum_file, Total_Intensity) %>%
+  dplyr::summarise(sum_ox = sum(intensity))
+
+
+
+df_shared_plot <- df_shared_plot %>% 
+  mutate(Annotated_ox = (sum_ox / Total_Intensity) * 100)
+
+
+df_shared_plot_mean <- df_shared_plot %>% 
+  group_by(group, scan_index,spectrum_file) %>%
+  dplyr::summarise(mean_tic = mean(Annotated_ox))%>% recode_groups()
+
+df_shared_plot_rep <- df_shared_plot %>% 
+  group_by(group, replicate, scan_index,spectrum_file) %>%
+  dplyr::summarise(mean_tic = mean(Annotated_ox)) %>% recode_groups()
+
+
+
+p_A2 <- df_shared_plot_mean %>%
+ggplot(aes(x = group, y = mean_tic, fill = group, colour = group)) +
+  geom_boxplot(colour = "black", linewidth = 0.5, alpha = 0.5,
+               outlier.shape = 21, outlier.fill = "white", outlier.size = 2) +
+  geom_jitter(data = df_shared_plot_rep, aes(x=group, y=mean_tic, fill = group, colour =group),
+              width = 0.15, size = 1.5, alpha = 0.6) +
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 23, size = 3, fill = "white", colour = "black"
+  ) +
+  stat_summary(
+    fun.data = function(x) {
+      data.frame(
+        y = max(x) * 1.05,
+        label = paste0("n=", length(x))
+      )
+    },
+    geom = "text",
+    size = 3, fontface = "bold", colour = "black"
+  ) +
+scale_fill_brewer(palette = "Set2") +
+scale_colour_brewer(palette = "Set2") +
+  labs(
+    title = "Oxonium Signal across CEs",
+    x     = "Collisional Energy (%)",
+    y     = "Annotated TIC (%)"
+  ) +
+    theme_foundation(base_size = base_size, base_family = "sans") +
+    theme(
+      panel.grid.major  = element_blank(),
+      panel.grid.minor  = element_blank(),
+      panel.border      = element_blank(),
+      panel.background  = element_blank(),
+      text              = element_text(colour = "black"),
+      plot.title        = element_text(face = "bold",
+                            size = rel((title_text_rel_size + base_size) / base_size), hjust = 0.5),
+      plot.subtitle     = element_text(hjust = 0.5, colour = "grey40"),
+      axis.line         = element_line(colour = "black", size = line_size),
+      axis.ticks        = element_line(colour = "black", size = line_size),
+      axis.title        = element_text(face = "bold", size = rel(1)),
+      axis.title.y      = element_text(angle = 90, vjust = 2),
+      axis.title.x      = element_text(vjust = -0.2),
+      axis.text         = element_text(face = "bold",
+                            size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      axis.text.x       = element_text(angle = 45, vjust = 1, hjust = 1),
+      plot.background   = element_blank(),
+      legend.text       = element_text(size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      legend.title      = element_text(face = "bold",
+                            size = rel((axis_text_rel_size + base_size) / base_size)),
+      legend.position   = "right",
+      legend.background = element_rect(fill = "white", colour = "grey80")
+    )
+p_A2
+
+ggsave("Annotated_TIC.pdf",  p_A2, dpi = 600, width =8, height = 5 ,device = cairo_pdf)
+
+```
+
+
+#HexNAc(3)Hex(4)NeuAc(1)
+#oxoium ion signals
+```{r}
+####Intensity anaylsis 
+
+df_shared <- data_filtered %>%
+  filter(grepl("Custom_Ion", neutral_loss)) %>%
+  mutate(
+    ion_name      = ion_type,,
+    raw_intensity = intensity,
+    rel_intensity = raw_intensity / Max_Intensity * 100
+  ) 
+
+# --- Average relative intensity per ion × group × glycan ---
+diag_summary_glycan <- df_shared %>%
+  group_by(group, Glycans, ion_name) %>%
+  dplyr::summarise(
+    mean_rel_intensity = mean(rel_intensity, na.rm = TRUE),
+    n                  = n(),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Group = recode(group,
+      "HCD_20" = "20", "HCD_25" = "25", "HCD_30" = "30",
+      "HCD_35" = "35", "HCD_40" = "40")
+  )
+
+
+# --- Order ions by overall mean intensity across all glycans ---
+ion_order_glycan <- diag_summary_glycan %>%
+  group_by(ion_name) %>%
+  dplyr::summarise(overall_mean = mean(mean_rel_intensity), .groups = "drop") %>%
+  arrange(desc(overall_mean)) %>%
+  pull(ion_name)
+
+diag_summary_glycan <- diag_summary_glycan %>%
+  mutate(ion_name = factor(ion_name, levels = ion_order_glycan))
+
+# --- How many unique glycans? Build a colour palette that always has enough colours ---
+n_ions <- n_distinct(diag_summary_glycan$ion_name)
+ion_colours <- colorRampPalette(RColorBrewer::brewer.pal(min(9, n_ions), "Set1"))(n_ions)
+
+# --- Count peptides per glycan for informative strip labels ---
+glycan_counts <- df_shared %>%
+  filter(!is.na(Glycans) & Glycans != "") %>%
+  group_by(Glycans) %>%
+  dplyr::summarise(n_pep = n_distinct(Sequence..unformatted.), .groups = "drop")
+
+diag_summary_glycan <- diag_summary_glycan %>%
+  left_join(glycan_counts, by = "Glycans") %>%
+  mutate(glycan_label = sprintf("%s\n(n=%d peptides)", Glycans, n_pep))
+
+
+diag_summary_glycan <- diag_summary_glycan %>%
+  filter(ion_name %in% c("HexNAc", "Hex-HexNAc", "NeuAc", "NeuAc – H2O", "HexNAc(1)Hex(1)NeuAc(1)")) %>%
+  filter(n_pep > 9)
+
+
+# ============================================================
+# SECTION B2 — DIAGNOSTIC ION RELATIVE INTENSITY BY GLYCAN
+# One page per glycan, saved to PDF
+# ============================================================
+
+unique_glycans <- unique(diag_summary_glycan$Glycans)
+
+pdf("diagnostic_ions_by_glycan.pdf", width = 6, height = 6)
+
+for (glycan in unique_glycans) {
+  
+  plot_data <- diag_summary_glycan %>%
+    filter(Glycans == glycan)
+  
+  # Skip if somehow empty
+  if (nrow(plot_data) == 0) next
+  
+  n_pep    <- unique(plot_data$n_pep)
+  n_ions_g <- n_distinct(plot_data$ion_name)
+  ion_colours_g <- colorRampPalette(
+    RColorBrewer::brewer.pal(min(9, n_ions_g), "Set1")
+  )(n_ions_g)
+  
+  p <- plot_data %>%
+    ggplot(aes(x = Group, y = mean_rel_intensity, colour = ion_name, group = ion_name)) +
+    geom_line(linewidth = 0.8) +
+    geom_point(size = 2.5) +
+    scale_colour_manual(values = ion_colours_g, name = "Diagnostic Ion") +
+    scale_y_continuous(
+      labels = scales::label_number(suffix = "%"),
+      expand = expansion(mult = c(0, 0.08))
+    ) +
+    labs(
+      title    = glycan,
+      subtitle = sprintf("n = %d peptides", n_pep),
+      x        = "Collisional Energy",
+      y        = "Mean Relative Intensity (% base peak)"
+    ) +
+    theme_foundation(base_size = base_size, base_family = "sans") +
+    theme(
+      panel.grid.major  = element_blank(),
+      panel.grid.minor  = element_blank(),
+      panel.border      = element_blank(),
+      panel.background  = element_blank(),
+      text              = element_text(colour = "black"),
+      plot.title        = element_text(face = "bold",
+                            size = rel((title_text_rel_size + base_size) / base_size), hjust = 0.5),
+      plot.subtitle     = element_text(hjust = 0.5, colour = "grey40"),
+      axis.line         = element_line(colour = "black", size = line_size),
+      axis.ticks        = element_line(colour = "black", size = line_size),
+      axis.title        = element_text(face = "bold", size = rel(1)),
+      axis.title.y      = element_text(angle = 90, vjust = 2),
+      axis.title.x      = element_text(vjust = -0.2),
+      axis.text         = element_text(face = "bold",
+                            size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      plot.background   = element_blank(),
+      legend.text       = element_text(size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      legend.title      = element_text(face = "bold",
+                            size = rel((axis_text_rel_size + base_size) / base_size)),
+      legend.position   = "bottom",
+      legend.background = element_rect(fill = "white", colour = "grey80")
+    )
+  
+  print(p)
+}
+
+dev.off()
+
+message(sprintf("PDF saved: %d pages (%d glycans)", length(unique_glycans), length(unique_glycans)))
+```
+
+
+
+
+#annotated TIC diffs 
+```{r}
+
+line_size <- 1 
+base_size <- 12 
+axis_text_rel_size = -1
+title_text_rel_size = +2
+
+####Intensity anaylsis 
+data1 <- read.csv(file = "Nick_riley_glyco/annotated_tic_difs/rescoring_results_intact.csv", header = TRUE)
+data2 <- read.csv(file = "Nick_riley_glyco/annotated_tic_difs/rescoring_results_intact_labile.csv", header = TRUE)
+data3 <- read.csv(file = "Nick_riley_glyco/annotated_tic_difs/rescoring_results_intact_remainder.csv", header = TRUE)
+
+keep <- c("HCD_20", "HCD_25", "HCD_30", "HCD_35", "HCD_40")
+
+
+data1$Type <- "Intact"
+data2$Type <- "Intact_labile"
+data3$Type <- "Intact_remainder"
+
+
+data <- bind_rows(data1, data2, data3)
+
+data_filtered <- data %>%
+  filter(Group %in% keep) %>%
+  filter(Hyperscore > 50) %>%
+  filter(grepl("NGlycan", Assigned.Modifications)) %>%
+  filter(grepl("hcd", Header, ignore.case = TRUE))%>%
+  filter(
+    !(grepl("hcd35.00|hcd36.00", Header, ignore.case = TRUE) & Group != "HCD_35"))
+
+
+
+data_filtered <- data_filtered %>%
+  mutate(Group = recode(Group, "HCD_20" = "20%"),
+         Group = recode(Group, "HCD_25" = "25%"),
+         Group = recode(Group, "HCD_30" = "30%"),
+         Group = recode(Group, "HCD_35" = "35%"),
+         Group = recode(Group, "HCD_40" = "40%"))
+
+
+
+p_A2 <- data_filtered %>%
+ggplot(aes(x = Type, y = Annotated_TIC_., fill = Type, colour = Type)) +
+  geom_boxplot(colour = "black", linewidth = 0.5, alpha = 0.5,
+               outlier.shape = 21, outlier.fill = "white", outlier.size = 2) +
+  geom_jitter(width = 0.15, size = 1.5, alpha = 0.6) +
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 23, size = 3, fill = "white", colour = "black"
+  ) +
+  stat_summary(
+    fun.data = function(x) {
+      data.frame(
+        y = max(x) * 1.05,
+        label = paste0("n=", length(x))
+      )
+    },
+    geom = "text",
+    size = 3, fontface = "bold", colour = "black"
+  ) +
+scale_fill_brewer(palette = "Set2") +
+scale_colour_brewer(palette = "Set2") +
+  facet_wrap(~Group, ncol = 3) +
+  labs(
+    title = NULL,
+    x     = "Collisional Energy (%)",
+    y     = "Annotated TIC (%)"
+  ) +
+    theme_foundation(base_size = base_size, base_family = "sans") +
+    theme(
+      panel.grid.major  = element_blank(),
+      panel.grid.minor  = element_blank(),
+      panel.border      = element_blank(),
+      panel.background  = element_blank(),
+      text              = element_text(colour = "black"),
+      plot.title        = element_text(face = "bold",
+                            size = rel((title_text_rel_size + base_size) / base_size), hjust = 0.5),
+      plot.subtitle     = element_text(hjust = 0.5, colour = "grey40"),
+      axis.line         = element_line(colour = "black", size = line_size),
+      axis.ticks        = element_line(colour = "black", size = line_size),
+      axis.title        = element_text(face = "bold", size = rel(1)),
+      axis.title.y      = element_text(angle = 90, vjust = 2),
+      axis.title.x      = element_text(vjust = -0.2),
+      axis.text         = element_text(face = "bold",
+                            size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      axis.text.x       = element_text(angle = 45, vjust = 1, hjust = 1),
+      plot.background   = element_blank(),
+      legend.text       = element_text(size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      legend.title      = element_text(face = "bold",
+                            size = rel((axis_text_rel_size + base_size) / base_size)),
+      legend.position   = "right",
+      legend.background = element_rect(fill = "white", colour = "grey80")
+    )
+p_A2
+
+ggsave("Annotated_TIC.pdf",  p_A2, dpi = 600, width =8, height = 5 ,device = cairo_pdf)
+
+```
+
+
+
+

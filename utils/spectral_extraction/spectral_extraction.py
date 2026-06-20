@@ -28,8 +28,8 @@ def spectral_extraction(file_path: str, scan_number_str: str):
 
     results = extract_multiple_scans_from_file_lightweight(file_path, [scan_num])
 
-    if results and results[0]['status'] == 'success':
-        return np.array(results[0]['mz']), np.array(results[0]['intensity'])
+    if results and results[0]["status"] == "success":
+        return np.array(results[0]["mz"]), np.array(results[0]["intensity"])
 
     if results:
         logger.debug(f"Extraction failed for scan {scan_num}: {results[0]['status']}")

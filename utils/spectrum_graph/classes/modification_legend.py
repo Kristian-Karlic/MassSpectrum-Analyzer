@@ -23,17 +23,23 @@ class ModificationLegend(QWidget):
 
         # Title
         title_label = QLabel("Modifications:")
-        title_label.setStyleSheet(f"font-weight: bold; color: {EditorConstants.TEXT_COLOR()}; background-color: transparent;")
+        title_label.setStyleSheet(
+            f"font-weight: bold; color: {EditorConstants.TEXT_COLOR()}; background-color: transparent;"
+        )
         self.layout.addWidget(title_label)
 
         # Add info label about stacking
         info_label = QLabel("(Max 2 per position)")
-        info_label.setStyleSheet(f"font-size: 10px; color: {EditorConstants.TEXT_COLOR()}; background-color: transparent; font-style: italic;")
+        info_label.setStyleSheet(
+            f"font-size: 10px; color: {EditorConstants.TEXT_COLOR()}; background-color: transparent; font-style: italic;"
+        )
         self.layout.addWidget(info_label)
 
         # PLACEHOLDER for when no modifications - ALWAYS VISIBLE
         self.no_mods_label = QLabel("None")
-        self.no_mods_label.setStyleSheet(f"font-size: 10px; color: {EditorConstants.TEXT_COLOR()}; background-color: transparent; font-style: italic;")
+        self.no_mods_label.setStyleSheet(
+            f"font-size: 10px; color: {EditorConstants.TEXT_COLOR()}; background-color: transparent; font-style: italic;"
+        )
         self.layout.addWidget(self.no_mods_label)
 
         # Add stretch to push everything to the left
@@ -46,8 +52,12 @@ class ModificationLegend(QWidget):
     def clear_legend(self):
         """Clear all legend items but keep the widget visible"""
         # Remove all items except title, info label, no_mods_label and stretch
-        while self.layout.count() > 4:  # Keep title, info label, no_mods_label and stretch
-            item = self.layout.takeAt(3)  # Remove fourth item (first legend item after no_mods_label)
+        while (
+            self.layout.count() > 4
+        ):  # Keep title, info label, no_mods_label and stretch
+            item = self.layout.takeAt(
+                3
+            )  # Remove fourth item (first legend item after no_mods_label)
             if item.widget():
                 item.widget().deleteLater()
 
@@ -57,11 +67,17 @@ class ModificationLegend(QWidget):
         self.no_mods_label.setVisible(True)
         self.setVisible(True)
 
-    def update_legend(self, modifications: Dict[int, List[Tuple[float, str]]], nl_symbol_entries: list = None):
+    def update_legend(
+        self,
+        modifications: Dict[int, List[Tuple[float, str]]],
+        nl_symbol_entries: list = None,
+    ):
         """Update the legend based on current modifications with stacking info - FIXED for empty modifications"""
 
         # Clear existing legend items
-        while self.layout.count() > 4:  # Keep title, info label, no_mods_label and stretch
+        while (
+            self.layout.count() > 4
+        ):  # Keep title, info label, no_mods_label and stretch
             item = self.layout.takeAt(3)
             if item.widget():
                 item.widget().deleteLater()
@@ -118,14 +134,20 @@ class ModificationLegend(QWidget):
 
         # Add stacking info if there are stacked positions
         if stacked_positions:
-            stacking_info = QLabel(f"Stacked at: {', '.join(map(str, stacked_positions))}")
-            stacking_info.setStyleSheet("font-size: 10px; color: #888; background-color: transparent;")
+            stacking_info = QLabel(
+                f"Stacked at: {', '.join(map(str, stacked_positions))}"
+            )
+            stacking_info.setStyleSheet(
+                "font-size: 10px; color: #888; background-color: transparent;"
+            )
             self.layout.insertWidget(self.layout.count() - 1, stacking_info)
 
         # NL / labile / remainder symbol legend entries
         if nl_symbol_entries:
             sep = QLabel("|")
-            sep.setStyleSheet(f"color: {EditorConstants.DISABLED_COLOR()}; background-color: transparent;")
+            sep.setStyleSheet(
+                f"color: {EditorConstants.DISABLED_COLOR()}; background-color: transparent;"
+            )
             self.layout.insertWidget(self.layout.count() - 1, sep)
             for symbol, label, mass_da, mod_name in nl_symbol_entries:
                 sign = "+" if mass_da >= 0 else ""
@@ -169,7 +191,9 @@ class ModificationLegend(QWidget):
 
         return colors
 
-    def create_legend_item(self, color: QColor, name: str, mass: float, count: int) -> QWidget:
+    def create_legend_item(
+        self, color: QColor, name: str, mass: float, count: int
+    ) -> QWidget:
         """Create a single legend item"""
         item_widget = QWidget()
         item_layout = QHBoxLayout(item_widget)
@@ -192,7 +216,9 @@ class ModificationLegend(QWidget):
             text = name
 
         text_label = QLabel(text)
-        text_label.setStyleSheet(f"color: {EditorConstants.TEXT_COLOR()}; font-size: 11px;")
+        text_label.setStyleSheet(
+            f"color: {EditorConstants.TEXT_COLOR()}; font-size: 11px;"
+        )
         item_layout.addWidget(text_label)
 
         return item_widget

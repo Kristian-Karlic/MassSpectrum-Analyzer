@@ -14,7 +14,9 @@ class NormalizerFactory:
     """Factory for creating the appropriate PSM normalizer."""
 
     @staticmethod
-    def create(file_type: str, mod_database=None, source_file_path: str = None) -> PSMNormalizer:
+    def create(
+        file_type: str, mod_database=None, source_file_path: str = None
+    ) -> PSMNormalizer:
         """Return the normalizer for the given search-engine type.
 
         Args:
@@ -43,7 +45,9 @@ class NormalizerFactory:
                 raise ValueError(
                     f"source_file_path is required for psm_utils format '{file_type}'"
                 )
-            return PSMUtilsNormalizer(format_key=file_type, source_file_path=source_file_path)
+            return PSMUtilsNormalizer(
+                format_key=file_type, source_file_path=source_file_path
+            )
         else:
             raise ValueError(f"Unknown search-engine type: {file_type}")
 

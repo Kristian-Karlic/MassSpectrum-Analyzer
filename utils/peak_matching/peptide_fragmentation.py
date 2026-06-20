@@ -7,6 +7,7 @@ All functionality has been moved to sub-modules:
 
 This file re-exports every public name so existing imports continue to work.
 """
-from .constants import *          # noqa: F401,F403
-from .fragmentation import *      # noqa: F401,F403
-from .matching import *           # noqa: F401,F403
+
+from .constants import *  # noqa: F401,F403
+from .fragmentation import *  # noqa: F401,F403
+from .matching import *  # noqa: F401,F403

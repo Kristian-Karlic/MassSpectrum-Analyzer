@@ -7,3 +7,14 @@ from .mouse_interaction_mixin import MouseInteractionMixin
 from .export_mixin import ExportMixin
 from .spectrum_plotting_mixin import SpectrumPlottingMixin
 from .view_settings_mixin import ViewSettingsMixin
+
+__all__ = [
+    "UISetupMixin",
+    "PeptideDisplayMixin",
+    "ModificationMixin",
+    "AnnotationUndoMixin",
+    "MouseInteractionMixin",
+    "ExportMixin",
+    "SpectrumPlottingMixin",
+    "ViewSettingsMixin",
+]

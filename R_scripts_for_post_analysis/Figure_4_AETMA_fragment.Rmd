@@ -1,0 +1,340 @@
+---
+title: 'C-tails'
+author: "Kristian Karlic"
+date: "2026"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+editor_options: 
+  chunk_output_type: console
+---
+#########################################################
+### A) Installing and loading required packages
+#########################################################
+
+``` {r setup, include = FALSE}
+#List of packages required for the code
+required_Packages_Install <- c("RColorBrewer", "readxl", "dplyr", "broom", "tidyr",
+                               "magrittr", "devtools", "scales", "purrr", "stringr",
+                               "ggrepel", "gridExtra", "Peptides","plyr", "ggstance",
+                               "UpSetR", "ggpubr", "viridis", "openxlsx","stringr",
+                               "matrixStats", "ggprism", "patchwork", "BiocManager",
+                               "UpSetR", "ggupset", "eulerr", 'ggalluvial', 'reshape2',
+                               'cowplot', "ggVennDiagram", "forcats", "tibble","readr", "ggplot2", "extrafont", "ggthemes","ggridges"
+                               )
+
+
+
+#Checks if packages are installed, and will download if needed otherwise will load them in
+for(Package in required_Packages_Install){
+  if(!require(Package,character.only = TRUE)) { 
+      install.packages(Package, dependencies=TRUE)
+  }
+  library(Package,character.only = TRUE)
+}
+
+
+rstudioapi::writeRStudioPreference("data_viewer_max_columns", 1000L)
+cbPalette <- c("#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3", "#A6D854", "#FFD92F", "#E5C494", "#B3B3B3")
+knitr::opts_chunk$set(include = FALSE)
+
+
+
+#function to label fragment ion types
+classify_fragment <- function(ion_type, base_type, fragment_sequence, modified_fragment) {
+  
+  ion_type <- trimws(as.character(ion_type))
+  base_type <- trimws(as.character(base_type))
+  modified_fragment <- trimws(as.character(modified_fragment))
+  
+  # Check for remainder ions
+  if (ion_type %in% c("b^", "y^", "a^", "MH^")) {
+    return("Remainder_ion")
+  }
+  
+  #Check for neutal loss species
+  if (ion_type %in% c("b*", "y*", "a*", "MH*")) {
+    return("Remainder_ion")
+  }
+  
+  # Check for labile ions
+  if (ion_type %in% c("b~", "y~", "a~", "MH~")) {
+    return("Labile_ion")
+  }
+  
+  # Check for standard b, y, a ions (exact match)
+  if (ion_type %in% c("b", "y", "a", "MH") || base_type %in% c("b", "y", "a", "MH")) {
+    
+    # Use modified_fragment column, not fragment_sequence
+    bracket_values <- str_match_all(modified_fragment, "\\[([^\\]]+)\\]")[[1]]
+    
+    if (nrow(bracket_values) > 0) {
+      numeric_vals <- suppressWarnings(
+        as.numeric(str_replace(bracket_values[, 2], "^\\+", ""))
+      )
+      numeric_vals <- numeric_vals[!is.na(numeric_vals)]
+      
+      if (length(numeric_vals) > 0 && any(abs(numeric_vals) > 205)) {
+        return("Intact_modified_ion")
+      } else {
+        return("Non-modified_ion")
+      }
+    } else {
+      return("Non-modified_ion")
+    }
+  }
+  
+  return(NA_character_)
+}
+
+# Shared theme settings
+base_size           <- 12
+title_text_rel_size <- 2
+axis_text_rel_size  <- 1
+
+my_theme <- theme_foundation(base_size = base_size, base_family = "sans") +
+  theme(
+    panel.grid.major  = element_line(colour = "grey90"),
+    panel.grid.minor  = element_blank(),
+    panel.border      = element_rect(colour = "grey70", fill = NA),
+    panel.background  = element_blank(),
+    plot.background   = element_blank(),
+    text              = element_text(colour = "black"),
+    plot.title        = element_text(
+                          face = "bold",
+                          size = rel((title_text_rel_size + base_size) / base_size),
+                          hjust = 0.5),
+    axis.text         = element_text(
+                          size   = rel((axis_text_rel_size + base_size) / base_size),
+                          colour = "black"),
+    axis.title        = element_text(face = "bold", colour = "black"),
+    strip.text        = element_text(
+                          face   = "bold",
+                          size   = rel((title_text_rel_size + base_size) / base_size),
+                          colour = "black"),
+    strip.background  = element_blank(),
+    legend.text       = element_text(
+                          size   = rel((axis_text_rel_size + base_size) / base_size),
+                          colour = "black"),
+    legend.title      = element_text(
+                          face   = "bold",
+                          size   = rel((axis_text_rel_size + base_size) / base_size)),
+    legend.position        = "right",
+    legend.background      = element_rect(fill = "white", colour = "grey80"),
+    legend.key             = element_rect(fill = "white")
+  )
+
+```
+
+
+#Import data
+```{r} 
+
+####Intensity anaylsis 
+data_fragments <- read.csv(file = "rescoring_results_fragments.csv", header = TRUE)
+data <- read.csv(file = "rescoring_results.csv", header = TRUE)
+
+#Bind some meta data from data to long format fragments
+data_fragments <- data_fragments %>%
+  left_join(
+    data %>% select(Spectrum.file, index, Header, Total_Intensity, Protein, Assigned.Modifications),
+    by = c(
+      "Spectrum.file" = "Spectrum.file",
+      "index" = "index"
+    )
+  )
+
+
+```
+
+
+
+```{r}
+
+# ── Shared data prep ──────────────────────────────────────────────────────────
+graph_data <- data_fragments %>%
+  filter(!grepl("rev_", Protein)) %>%
+  filter(
+    grepl("E|D|C-term", Assigned.Modifications)
+  ) %>%
+  mutate(Number_of_Mods = str_count(Assigned.Modifications, fixed("84.1054")))
+
+graph_data <- graph_data %>%
+  filter(!grepl("-NH3|-H2O", ion_type)) %>%
+  mutate(
+    ion_type_simple = case_when(
+      grepl("\\*⁵", ion_type) ~ "Neutral loss (5 x -59)",
+      grepl("\\*⁴", ion_type) ~ "Neutral loss (4 x -59)",
+      grepl("\\*³", ion_type) ~ "Neutral loss (3 x -59)",
+      grepl("\\*²", ion_type) ~ "Neutral loss (2 x -59)",
+      grepl("\\*",  ion_type) ~ "Neutral loss (-59)",
+      TRUE                    ~ "Intact"
+    )
+  )
+write.xlsx(graph_data, file = "Table_1_matched_ion_intensity_for_AETMA_peptides.xlsx")
+
+# Updated levels (fewest losses first for stacking order)
+ion_type_levels <- c(
+  "Intact",
+  "Neutral loss (-59)",
+  "Neutral loss (2 x -59)",
+  "Neutral loss (3 x -59)",
+  "Neutral loss (4 x -59)",
+  "Neutral loss (5 x -59)"
+)
+
+
+# ── PLOT 1: Ion counts ────────────────────────────────────────────────────────
+
+# ── PLOT 2: Relative percentage abundance ────────────────────────────────────
+
+
+n_per_facet <- graph_data %>%
+  distinct(Number_of_Mods, index, Spectrum.file, Peptide) %>%
+  group_by(Number_of_Mods) %>%
+  dplyr::summarise(n_peptides = n(), .groups = "drop")
+
+# Create named labeller vector
+facet_labels <- setNames(
+  paste0(n_per_facet$Number_of_Mods, " mod(s)\nn = ", n_per_facet$n_peptides),
+  n_per_facet$Number_of_Mods
+)
+
+
+# ── PLOT 2: Relative percentage abundance ────────────────────────────────────
+
+pct_data <- graph_data %>%
+  group_by(Number_of_Mods, base_type, ion_type_simple) %>%
+  dplyr::summarise(total_intensity = sum(intensity, na.rm = TRUE), .groups = "drop") %>%
+  group_by(Number_of_Mods, base_type) %>%
+  mutate(
+    pct             = total_intensity / sum(total_intensity) * 100,
+    ion_type_simple = factor(ion_type_simple, levels = ion_type_levels),
+    base_type       = factor(base_type,
+                             levels = c("y", "b", "a", "MH"),
+                             labels = c("y", "b", "a", "MH+"))
+  ) %>%
+  ungroup()
+
+p_pct <- pct_data %>%
+  ggplot(aes(x = base_type, y = pct, fill = ion_type_simple)) +
+  geom_bar(stat = "identity", colour = "black", linewidth = 0.2) +
+  scale_fill_brewer(palette = "YlOrRd", name = "Ion type", drop = FALSE) +
+  scale_y_continuous(labels = scales::label_percent(scale = 1)) +
+  facet_wrap(
+    ~ Number_of_Mods, ncol = 5,
+    labeller = labeller(Number_of_Mods = facet_labels)
+  ) +
+  labs(
+    title = "AETMA Neutral loss",
+    x     = "Fragment Ion",
+    y     = "Fragment Ion Relative Abundance (%)"
+  ) +
+  my_theme
+
+p_pct
+
+ggsave("Figure4A_Ion_intensities.pdf",  p_pct, dpi = 600, width =10, height = 6,device = cairo_pdf)
+
+
+```
+
+
+```{r}
+
+data_filtered <- data %>%
+  filter(!grepl("rev_", Protein)) %>%
+  filter(grepl("E|D|C-term", Assigned.Modifications)) %>%
+  mutate(Number_of_Mods = str_count(Assigned.Modifications, fixed("84.1054")))
+
+data_filtered$backbone_coverage_partial<- (data_filtered$backbone_coverage_partial/data_filtered$backbone_coverage_potential)*100
+data_filtered$backbone_coverage_intact <- (data_filtered$backbone_coverage_intact/data_filtered$backbone_coverage_potential)*100
+
+# ── Shared data prep ──────────────────────────────────────────────────────────
+
+
+coverage_long <- data_filtered %>%
+  select(Number_of_Mods, Replicate, Group, Peptide, 
+         backbone_coverage_partial, backbone_coverage_intact, index, Spectrum.file) %>%
+  pivot_longer(
+    cols      = c(backbone_coverage_partial, backbone_coverage_intact),
+    names_to  = "coverage_type",
+    values_to = "coverage_pct"
+  ) %>%
+  mutate(
+    coverage_type = factor(
+      coverage_type,
+      levels = c("backbone_coverage_intact", "backbone_coverage_partial"),
+      labels = c("Intact (y/b/a)", "Partial Coverage (y/y*/b/b*/a/a*)")
+    ),
+    Number_of_Mods = factor(Number_of_Mods)
+  )
+
+coverage_long_rep <- coverage_long %>%
+  group_by(Number_of_Mods, Replicate, coverage_type) %>%
+  dplyr::summarise(coverage_pct = mean(coverage_pct))
+
+
+# ── N peptides per facet label ────────────────────────────────────────────────
+
+n_coverage <- coverage_long %>%
+  distinct(Number_of_Mods, Peptide, Group, Replicate,  index, Spectrum.file) %>%
+  group_by(Number_of_Mods) %>%
+  dplyr::summarise(n_peptides = n(), .groups = "drop")
+
+facet_labels_cov <- setNames(
+  paste0(n_coverage$Number_of_Mods, " mod(s)\nn = ", n_coverage$n_peptides),
+  n_coverage$Number_of_Mods
+)
+
+# ── Boxplot ───────────────────────────────────────────────────────────────────
+
+p_coverage <- coverage_long %>%
+  ggplot(aes(x = coverage_type, y = coverage_pct, fill = coverage_type)) +
+  geom_boxplot(
+    colour   = "black",
+    linewidth = 0.4,
+    outlier.size  = 0.8,
+    outlier.alpha = 0.5
+  ) +
+  scale_fill_brewer(palette = "Set2", name = "Coverage type") +
+  scale_y_continuous(
+    labels = scales::label_percent(scale = 1),
+    limits = c(0, 100)
+  ) +
+  facet_wrap(
+    ~ Number_of_Mods, ncol = 5,
+    labeller = labeller(Number_of_Mods = facet_labels_cov)
+  ) +
+  labs(
+    title = "Backbone Sequence Coverage by Number of Modifications",
+    x     = NULL,
+    y     = "Backbone coverage (%)"
+  ) +
+  my_theme +
+  theme(
+    axis.text.x  = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+
+p_coverage
+
+
+ggsave("Figure4B_backbone_coverage.pdf",  p_coverage, dpi = 600, width =10, height = 6,device = cairo_pdf)
+
+
+```
+
+
+```{r}
+plot <- p_pct / p_coverage
+
+ggsave("Figure4.pdf",  plot, dpi = 600, width =10, height = 6,device = cairo_pdf)
+
+
+
+```
+
+

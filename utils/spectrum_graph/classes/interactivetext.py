@@ -7,6 +7,7 @@ import re
 
 logger = logging.getLogger(__name__)
 
+
 class InteractiveTextItem(pg.TextItem):
     def __init__(self, text, color, peak_coord, leader_line, viewer, **kwargs):
         super().__init__(text, color=color, **kwargs)
@@ -22,176 +23,244 @@ class InteractiveTextItem(pg.TextItem):
                 newPos = value
                 self.leader_line.setData(
                     x=[self.peak_coord[0], newPos.x()],
-                    y=[self.peak_coord[1], newPos.y()]
+                    y=[self.peak_coord[1], newPos.y()],
                 )
         return super().itemChange(change, value)
-    
-    
+
+
 class EnhancedInteractiveTextItem(pg.TextItem):
-    """Enhanced interactive text item with movable straight leader line"""
-    
-    def __init__(self, text, color, peak_coord, leader_line, viewer, fragment_data=None, **kwargs):
+    """Enhanced interactive text item with movable straight leader line.
+
+    Left-click + drag   → move this label only (or all selected labels together).
+    Shift + left-click  → toggle this label into/out of the viewer''s multi-selection
+                          set (highlighted in blue).  Dragging any label in the
+                          selection moves ALL selected labels by the same delta.
+    """
+
+    _SELECTED_BG = "rgba(77,171,247,0.30)"
+    _SELECTED_BORDER = "#4dabf7"
+
+    def __init__(
+        self, text, color, peak_coord, leader_line, viewer, fragment_data=None, **kwargs
+    ):
         super().__init__(text, color=color, **kwargs)
         self.peak_coord = peak_coord
         self.leader_line = leader_line
         self.viewer = viewer
-        
-        # Store fragment data for hover highlighting
-        # fragment_data should contain: fragment_sequence, base_type, ion_number, position
         self.fragment_data = fragment_data or {}
-        
-        # Enable dragging
+
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
-        
-        # Enable hover events
         self.setAcceptHoverEvents(True)
-        
-        # Track dragging state
+
         self.is_dragging = False
-        
-        # Connect to view transform changes to update leader line on zoom/pan
+        self._drag_start_pos: QPointF | None = None
+
         try:
             viewbox = self.viewer.spectrumplot.getViewBox()
             viewbox.sigRangeChanged.connect(self._on_view_transform)
         except Exception as e:
             logger.warning("Could not connect to view transform: %s", e)
 
+    # ------------------------------------------------------------------
+    # Multi-selection helpers
+    # ------------------------------------------------------------------
+
+    def _selection_set(self) -> set:
+        """Return (and lazily create) the viewer-level selected-labels set."""
+        if self.viewer is not None:
+            if not hasattr(self.viewer, "_selected_annotation_items"):
+                self.viewer._selected_annotation_items = set()
+            return self.viewer._selected_annotation_items
+        return set()
+
+    def _is_in_selection(self) -> bool:
+        return self in self._selection_set()
+
+    def _apply_selection_style(self, selected: bool) -> None:
+        """Draw/remove a blue background to indicate multi-selection membership."""
+        try:
+            if selected:
+                # Store the current rendered HTML so we can restore it
+                self._original_html_sel = self.toHtml() if hasattr(self, "toHtml") else ""
+                font_size = (
+                    getattr(self.viewer, "annotation_font_size", 14)
+                    if self.viewer
+                    else 14
+                )
+                plain = self.toPlainText()
+                super().setHtml(
+                    f'<span style="background-color:{self._SELECTED_BG};'
+                    f'border:1px solid {self._SELECTED_BORDER};'
+                    f'font-size:{font_size}px;">{plain}</span>'
+                )
+            else:
+                # Prefer the stored snapshot; fall back to the annotation HTML
+                # that was set when the item was created (_html_annotation), and
+                # ultimately to the plain text.  The `if original:` guard was
+                # wrong because an empty string is falsy.
+                original = getattr(self, "_original_html_sel", None)
+                if original is not None and original != "":
+                    super().setHtml(original)
+                elif hasattr(self, "_html_annotation") and self._html_annotation:
+                    super().setHtml(self._html_annotation)
+                else:
+                    # Last resort: re-render as plain text with the correct colour
+                    super().setText(self.toPlainText())
+                self._original_html_sel = None
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
     def setHtml(self, html):
-        """Override setHtml to ensure proper formatting"""
+        """Override setHtml to ensure proper formatting."""
         if html and isinstance(html, str):
             super().setHtml(html)
         else:
-            # Fallback to plain text if HTML is invalid
             super().setText(str(html) if html else "")
 
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
     def _on_view_transform(self):
-        """Update leader line when view transforms (zoom/pan)"""
+        """Update leader line when view transforms (zoom/pan)."""
         if not self.is_dragging:
             try:
                 current_pos = self.pos()
                 self._update_leader_line_simple(current_pos.x(), current_pos.y())
-            except Exception as e:
-                pass  # Silently ignore errors during rapid transforms
-    
+            except Exception:
+                pass
+
     def itemChange(self, change, value):
-        """Handle item position changes to update leader line and constrain to view bounds"""
-        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.is_dragging:
+        """Constrain position, update leader line, and batch-move selected labels."""
+        if (
+            change == QGraphicsItem.GraphicsItemChange.ItemPositionChange
+            and self.is_dragging
+        ):
             new_pos = value
-            
-            # Constrain position to within the visible graph bounds
+
+            # Constrain to visible graph bounds
             try:
                 viewbox = self.viewer.spectrumplot.getViewBox()
                 view_range = viewbox.viewRange()
                 x_min, x_max = view_range[0]
                 y_min, y_max = view_range[1]
-                
-                # Add small margin to keep label fully visible
                 margin_x = (x_max - x_min) * 0.02
                 margin_y = (y_max - y_min) * 0.02
-                
-                # Clamp position within bounds
                 clamped_x = max(x_min + margin_x, min(new_pos.x(), x_max - margin_x))
                 clamped_y = max(y_min + margin_y, min(new_pos.y(), y_max - margin_y))
-                
-                # Create new clamped position
                 new_pos = QPointF(clamped_x, clamped_y)
                 value = new_pos
-            except Exception as e:
-                pass  # If we can't get view bounds, allow unrestricted movement
-            
+            except Exception:
+                pass
+
             self._update_leader_line_simple(new_pos.x(), new_pos.y())
-        
+
+            # Batch-move all other selected labels by the same delta
+            sel = self._selection_set()
+            if (
+                len(sel) > 1
+                and self._is_in_selection()
+                and not getattr(self.viewer, "_batch_moving", False)
+                and self._drag_start_pos is not None
+            ):
+                delta = QPointF(
+                    new_pos.x() - self._drag_start_pos.x(),
+                    new_pos.y() - self._drag_start_pos.y(),
+                )
+                if self.viewer is not None:
+                    self.viewer._batch_moving = True
+                try:
+                    for other in sel:
+                        if (
+                            other is not self
+                            and isinstance(other, EnhancedInteractiveTextItem)
+                            and other._drag_start_pos is not None
+                        ):
+                            target = QPointF(
+                                other._drag_start_pos.x() + delta.x(),
+                                other._drag_start_pos.y() + delta.y(),
+                            )
+                            other.setPos(target)
+                            other._update_leader_line_simple(target.x(), target.y())
+                finally:
+                    if self.viewer is not None:
+                        self.viewer._batch_moving = False
+
         return super().itemChange(change, value)
 
     def _update_leader_line_simple(self, label_x, label_y):
-        """
-        Update simple straight line from peak top to text label.
-        Handles rotation properly - attaches from top for high-intensity labels, bottom for normal.
-        """
+        """Update the straight leader line from the peak top to the text label."""
         peak_mz, peak_intensity = self.peak_coord
-        
-        # Get font size for positioning calculations
-        font_size = getattr(self.viewer, 'annotation_font_size', 14)
-        
-        # Get rotation angle
+        font_size = getattr(self.viewer, "annotation_font_size", 14)
         rotation_angle = self.rotation()
-        
-        # Calculate text dimensions
         text_width = self._estimate_text_width()
-        
-        # Adjust connection point based on rotation
-        if abs(rotation_angle - 90) < 5:  # 90-degree rotation (vertical text)
-            # Check if label is at high intensity (side placement) or above peak
-            # High intensity labels (>90) are placed to the side, so attach from top
-            # Lower intensity labels are above the peak, so attach from bottom
-            if label_y < peak_intensity:  # Label is to the side (high intensity peak)
-                # Connect to top of rotated text - much closer
-                connection_x = label_x + (font_size * 0.5)  # Offset to right edge
-                connection_y = label_y + (font_size * 0.3)  # Just above label position
-            else:  # Label is above peak (normal intensity)
-                # Connect to bottom of rotated text
-                connection_x = label_x + (font_size * 0.5)  # Offset to right edge
-                connection_y = label_y - (font_size * 0.3)  # Just below label position
-        elif abs(rotation_angle + 90) < 5:  # -90-degree rotation
+
+        if abs(rotation_angle - 90) < 5:
+            if label_y < peak_intensity:
+                connection_x = label_x + (font_size * 0.5)
+                connection_y = label_y + (font_size * 0.3)
+            else:
+                connection_x = label_x + (font_size * 0.5)
+                connection_y = label_y - (font_size * 0.3)
+        elif abs(rotation_angle + 90) < 5:
             if label_y < peak_intensity:
                 connection_x = label_x - (font_size * 0.5)
                 connection_y = label_y + (font_size * 0.3)
             else:
                 connection_x = label_x - (font_size * 0.5)
                 connection_y = label_y - (font_size * 0.3)
-        else:  # No rotation or other angles (horizontal text)
-            # Connection point at the nearest border of the text bounding box
+        else:
             text_height = self._estimate_text_height()
             connection_x = max(label_x, min(peak_mz, label_x + text_width))
             if peak_intensity < label_y:
-                connection_y = label_y - (text_height / 2.0)  # Bottom border
+                connection_y = label_y - (text_height / 2.0)
             else:
-                connection_y = label_y + (text_height / 2.0)  # Top border
-        
-        # Update the single leader line from peak top to text
+                connection_y = label_y + (text_height / 2.0)
+
         if self.leader_line is not None:
             self.leader_line.setData(
-                x=[peak_mz, connection_x],
-                y=[peak_intensity, connection_y]
+                x=[peak_mz, connection_x], y=[peak_intensity, connection_y]
             )
-    
+
     def _estimate_text_width(self):
-        """Estimate text width based on actual rendered bounds or character count"""
+        """Estimate text width based on actual rendered bounds or character count."""
         try:
-            # Try to get actual rendered text bounds
             scene_rect = self.sceneBoundingRect()
             viewbox = self.viewer.spectrumplot.getViewBox()
             top_left = viewbox.mapSceneToView(scene_rect.topLeft())
             bottom_right = viewbox.mapSceneToView(scene_rect.bottomRight())
             actual_width = abs(bottom_right.x() - top_left.x())
-            
             if actual_width > 0:
                 return actual_width
         except Exception:
             pass
-        
-        # Fallback: estimate based on font size and character count
+
         try:
             viewbox = self.viewer.spectrumplot.getViewBox()
             view_rect = viewbox.viewRect()
             scene_rect = viewbox.sceneBoundingRect()
-            zoom_factor = view_rect.width() / scene_rect.width() if scene_rect.width() > 0 else 1.0
+            zoom_factor = (
+                view_rect.width() / scene_rect.width()
+                if scene_rect.width() > 0
+                else 1.0
+            )
         except Exception:
             zoom_factor = 1.0
-        
-        font_size = getattr(self.viewer, 'annotation_font_size', 14)
+
+        font_size = getattr(self.viewer, "annotation_font_size", 14)
         char_width = font_size * 0.6 * zoom_factor
-        
-        # Get text content
         try:
-            text_content = self.toPlainText() if hasattr(self, 'toPlainText') else ""
+            text_content = self.toPlainText() if hasattr(self, "toPlainText") else ""
             if not text_content:
-                html_text = self.toHtml() if hasattr(self, 'toHtml') else ""
+                html_text = self.toHtml() if hasattr(self, "toHtml") else ""
                 if html_text:
-                    text_content = re.sub('<[^<]+?>', '', html_text)
-            
+                    text_content = re.sub("<[^<]+?>", "", html_text)
             char_count = len(text_content) if text_content else 3
             return char_count * char_width
         except Exception:
@@ -210,114 +279,141 @@ class EnhancedInteractiveTextItem(pg.TextItem):
         except Exception:
             pass
 
-        # Fallback: estimate from font size and y-axis zoom
         try:
             viewbox = self.viewer.spectrumplot.getViewBox()
             view_rect = viewbox.viewRect()
             scene_rect = viewbox.sceneBoundingRect()
-            y_zoom = view_rect.height() / scene_rect.height() if scene_rect.height() > 0 else 1.0
+            y_zoom = (
+                view_rect.height() / scene_rect.height()
+                if scene_rect.height() > 0
+                else 1.0
+            )
         except Exception:
             y_zoom = 1.0
-        font_size = getattr(self.viewer, 'annotation_font_size', 14)
+        font_size = getattr(self.viewer, "annotation_font_size", 14)
         return font_size * y_zoom
 
+    # ------------------------------------------------------------------
+    # Mouse events
+    # ------------------------------------------------------------------
+
     def mousePressEvent(self, event):
-        """Handle mouse press to start dragging"""
+        """Shift/Ctrl+click toggles multi-selection; plain left-click starts a drag."""
         if event.button() == Qt.MouseButton.LeftButton:
+            if event.modifiers() & (
+                Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier
+            ):
+                sel = self._selection_set()
+                if self in sel:
+                    sel.discard(self)
+                    self._apply_selection_style(False)
+                else:
+                    sel.add(self)
+                    self._apply_selection_style(True)
+                event.accept()
+                return
+
             self.is_dragging = True
+            self._drag_start_pos = self.pos()
             self.setCursor(QCursor(Qt.CursorShape.ClosedHandCursor))
-            # Notify viewer to disable peak highlighting during drag
-            if self.viewer and hasattr(self.viewer, 'annotation_dragging'):
+
+            # Snapshot start positions for all co-selected labels
+            for item in self._selection_set():
+                if isinstance(item, EnhancedInteractiveTextItem):
+                    item._drag_start_pos = item.pos()
+
+            if self.viewer and hasattr(self.viewer, "annotation_dragging"):
                 self.viewer.annotation_dragging = True
-                # Also hide any current tooltip and clear peak highlighting
-                if hasattr(self.viewer, 'persistent_tooltip'):
+                if hasattr(self.viewer, "persistent_tooltip"):
                     self.viewer.persistent_tooltip.hide_tooltip()
-                if hasattr(self.viewer, '_clear_current_peak'):
+                if hasattr(self.viewer, "_clear_current_peak"):
                     self.viewer._clear_current_peak()
+
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        """Handle mouse move during dragging"""
+        """Only propagate movement when we explicitly started a drag.
+
+        Without this guard, Qt's ItemIsMovable flag causes the item to move
+        on ANY mouse-press/move sequence — even Shift/Ctrl clicks that are
+        meant only for selection toggling.
+        """
         if self.is_dragging:
-            # Let itemChange handle the updates automatically
-            pass
-        
-        super().mouseMoveEvent(event)
+            super().mouseMoveEvent(event)
+        # Intentionally do NOT call super() when not dragging so Qt's built-in
+        # ItemIsMovable mechanism cannot accidentally move this item.
 
     def mouseReleaseEvent(self, event):
-        """Handle mouse release to stop dragging"""
+        """Stop dragging and re-enable peak highlighting."""
         if event.button() == Qt.MouseButton.LeftButton:
             self.is_dragging = False
+            self._drag_start_pos = None
             self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
-            
-            # Re-enable peak highlighting on the viewer
-            if self.viewer and hasattr(self.viewer, 'annotation_dragging'):
+
+            if self.viewer and hasattr(self.viewer, "annotation_dragging"):
                 self.viewer.annotation_dragging = False
-            
-            # Final update using the actual item position
+
             current_pos = self.pos()
             self._update_leader_line_simple(current_pos.x(), current_pos.y())
-        
+
+            # Clear drag snapshots on all selected items
+            for item in self._selection_set():
+                if isinstance(item, EnhancedInteractiveTextItem):
+                    item._drag_start_pos = None
+
         super().mouseReleaseEvent(event)
 
     def hoverEnterEvent(self, event):
-        """Change cursor when hovering over text and highlight peptide/fragment"""
+        """Highlight on hover; suppress if label is already selected."""
         self.setCursor(QCursor(Qt.CursorShape.OpenHandCursor))
-        
-        # Trigger peptide sequence and fragment line highlighting
+
         if self.viewer and self.fragment_data:
-            fragment_sequence = self.fragment_data.get('fragment_sequence')
-            if fragment_sequence and hasattr(self.viewer, 'highlight_peptide_sequence'):
+            fragment_sequence = self.fragment_data.get("fragment_sequence")
+            if fragment_sequence and hasattr(self.viewer, "highlight_peptide_sequence"):
                 self.viewer.highlight_peptide_sequence(fragment_sequence)
-            
-            # Highlight the corresponding fragment line on the peptide display
-            base_type = self.fragment_data.get('base_type')
-            position = self.fragment_data.get('position')
-            if base_type and position and hasattr(self.viewer, 'highlight_fragment_line'):
+            base_type = self.fragment_data.get("base_type")
+            position = self.fragment_data.get("position")
+            if base_type and position and hasattr(self.viewer, "highlight_fragment_line"):
                 self.viewer.highlight_fragment_line(position, base_type)
-        
-        # Bold and highlight the text annotation itself
-        self._apply_hover_style(True)
-        
+
+        if not self._is_in_selection():
+            self._apply_hover_style(True)
+
         super().hoverEnterEvent(event)
 
     def hoverLeaveEvent(self, event):
-        """Reset cursor when leaving text and reset highlighting"""
+        """Reset highlighting on leave; keep selection style if still selected."""
         if not self.is_dragging:
             self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
-            
-            # Reset peptide and fragment line highlighting
             if self.viewer:
-                if hasattr(self.viewer, 'reset_peptide_highlighting'):
+                if hasattr(self.viewer, "reset_peptide_highlighting"):
                     self.viewer.reset_peptide_highlighting()
-                if hasattr(self.viewer, 'reset_fragment_line_highlighting'):
+                if hasattr(self.viewer, "reset_fragment_line_highlighting"):
                     self.viewer.reset_fragment_line_highlighting()
-        
-        # Reset text annotation style
-        self._apply_hover_style(False)
-        
+
+        if not self._is_in_selection():
+            self._apply_hover_style(False)
+
         super().hoverLeaveEvent(event)
 
     def _apply_hover_style(self, is_hovered):
-        """Apply or remove hover styling (bold and highlight) on the text annotation"""
+        """Apply or remove yellow hover highlight on the text annotation."""
         try:
-            # Get current HTML content
-            current_html = self.toHtml() if hasattr(self, 'toHtml') else ""
-            
             if is_hovered:
-                # Store original HTML for restoration
-                if not hasattr(self, '_original_html') or not self._original_html:
-                    self._original_html = current_html
-                
-                # Apply bold and background highlight style
-                # Wrap in a span with bold weight and yellow background
-                font_size = getattr(self.viewer, 'annotation_font_size', 14) if self.viewer else 14
-                highlighted_html = f'<span style="font-weight:bold; background-color:rgba(255,255,0,0.3); font-size:{font_size + 2}px;">{self.toPlainText()}</span>'
-                super().setHtml(highlighted_html)
+                if not getattr(self, "_original_html", None):
+                    self._original_html = self.toHtml() if hasattr(self, "toHtml") else ""
+                font_size = (
+                    getattr(self.viewer, "annotation_font_size", 14)
+                    if self.viewer
+                    else 14
+                )
+                super().setHtml(
+                    f'<span style="font-weight:bold;background-color:rgba(255,255,0,0.3);'
+                    f'font-size:{font_size + 2}px;">{self.toPlainText()}</span>'
+                )
             else:
-                # Restore original HTML
-                if hasattr(self, '_original_html') and self._original_html:
+                if getattr(self, "_original_html", None):
                     super().setHtml(self._original_html)
                     self._original_html = None
-        except Exception as e:
-            pass  # Silently handle any styling errors
+        except Exception:
+            pass

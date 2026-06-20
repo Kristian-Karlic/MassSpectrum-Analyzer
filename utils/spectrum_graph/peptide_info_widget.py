@@ -1,3 +1,5 @@
+import re
+
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel
 from PyQt6.QtCore import pyqtSignal, Qt, QRectF
 from PyQt6.QtGui import QPainter, QColor, QPen, QFont
@@ -7,8 +9,14 @@ import pandas as pd
 
 # Colour palette for pie-chart segments (enough contrast for up to 8 slices)
 _SEGMENT_PALETTE = [
-    '#5B9BD5', '#ED7D31', '#70AD47', '#FFC000',
-    '#E74C3C', '#9B59B6', '#1ABC9C', '#95A5A6',
+    "#5B9BD5",
+    "#ED7D31",
+    "#70AD47",
+    "#FFC000",
+    "#E74C3C",
+    "#9B59B6",
+    "#1ABC9C",
+    "#95A5A6",
 ]
 
 
@@ -67,9 +75,11 @@ class MiniDonutWidget(QWidget):
         font.setPixelSize(11)
         painter.setFont(font)
         text_y = cy + ring_size / 2 + 12
-        painter.drawText(QRectF(0, text_y, self._size, 14),
-                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-                         self._value_text)
+        painter.drawText(
+            QRectF(0, text_y, self._size, 14),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+            self._value_text,
+        )
 
         painter.end()
 
@@ -100,7 +110,9 @@ class IonDistributionWidget(QWidget):
         segments: list of (short_label, count) sorted largest-first
         formatted_title: optional override for the title string
         """
-        self._title = formatted_title if formatted_title is not None else f"{title}: {total}"
+        self._title = (
+            formatted_title if formatted_title is not None else f"{title}: {total}"
+        )
         self._total = total
         self._segments = []
         for i, (label, count) in enumerate(segments):
@@ -131,13 +143,14 @@ class IonDistributionWidget(QWidget):
         title_font.setPixelSize(11)
         title_font.setBold(True)
         painter.setFont(title_font)
-        painter.drawText(QRectF(0, 0, w, self._TITLE_H),
-                         Qt.AlignmentFlag.AlignCenter, self._title)
+        painter.drawText(
+            QRectF(0, 0, w, self._TITLE_H), Qt.AlignmentFlag.AlignCenter, self._title
+        )
 
         # ── Geometry ──
         pie_diam = self._PIE_DIAM
-        pie_x = w - pie_diam - 4          # right-align pie
-        pie_y = self._TITLE_H             # top of content area
+        pie_x = w - pie_diam - 4  # right-align pie
+        pie_y = self._TITLE_H  # top of content area
         rect = QRectF(pie_x, pie_y, pie_diam, pie_diam)
 
         outline_pen = QPen(text_color, 1.2)
@@ -194,7 +207,8 @@ class IonDistributionWidget(QWidget):
             painter.drawText(
                 QRectF(self._LEGEND_X + 11, y, avail_text_w, 14),
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                f"{label} {pct}")
+                f"{label} {pct}",
+            )
 
         painter.end()
 
@@ -219,7 +233,14 @@ class PeptideInfoWidget(QWidget):
         pie_header_layout = QHBoxLayout(pie_header)
         pie_header_layout.setContentsMargins(0, 0, 0, 0)
         pie_header_layout.setSpacing(4)
-        for label_text in ["Theor.\nFrags", "Peaks", "TIC", "Cov."]:
+        for label_text in [
+            "Theor.\nFrags",
+            "Peaks",
+            "TIC",
+            "Cov.",
+            "Intact\nCov.",
+            "Partial\nCov.",
+        ]:
             lbl = QLabel(label_text)
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet(f"""
@@ -241,7 +262,16 @@ class PeptideInfoWidget(QWidget):
         self.pie_peaks = MiniDonutWidget(size=52)
         self.pie_int = MiniDonutWidget(size=52)
         self.pie_cov = MiniDonutWidget(size=52)
-        for w in [self.pie_theor, self.pie_peaks, self.pie_int, self.pie_cov]:
+        self.pie_cov_intact = MiniDonutWidget(size=52)
+        self.pie_cov_partial = MiniDonutWidget(size=52)
+        for w in [
+            self.pie_theor,
+            self.pie_peaks,
+            self.pie_int,
+            self.pie_cov,
+            self.pie_cov_intact,
+            self.pie_cov_partial,
+        ]:
             pie_row_layout.addWidget(w, alignment=Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(pie_row)
 
@@ -251,12 +281,10 @@ class PeptideInfoWidget(QWidget):
         self.rescore_label = self.create_info_label("X!Tandem: -")
         self.consecutive_label = self.create_info_label("Longest Consecutive: -")
         self.complementary_label = self.create_info_label("Complementary Pairs: -")
-        self.morpheus_label = self.create_info_label("Morpheus Score: -")
 
         layout.addWidget(self.rescore_label)
         layout.addWidget(self.consecutive_label)
         layout.addWidget(self.complementary_label)
-        layout.addWidget(self.morpheus_label)
 
         # ── Ion counts section ─────────────────────────────────────
         ion_counts_title = QLabel("Ion counts")
@@ -317,9 +345,11 @@ class PeptideInfoWidget(QWidget):
 
     def update_theme(self):
         """Update all widgets to match the current theme"""
-        for label in [self.rescore_label,
-                      self.consecutive_label, self.complementary_label,
-                      self.morpheus_label]:
+        for label in [
+            self.rescore_label,
+            self.consecutive_label,
+            self.complementary_label,
+        ]:
             label.setStyleSheet(f"""
                 QLabel {{
                     font-size: 13px;
@@ -332,12 +362,23 @@ class PeptideInfoWidget(QWidget):
             """)
 
         # Repaint pie charts to pick up new theme colours
-        for w in [self.pie_theor, self.pie_peaks, self.pie_int, self.pie_cov]:
+        for w in [
+            self.pie_theor,
+            self.pie_peaks,
+            self.pie_int,
+            self.pie_cov,
+            self.pie_cov_intact,
+            self.pie_cov_partial,
+        ]:
             w.update()
 
         # Update section titles
         for child in self.findChildren(QLabel):
-            if child.text() in ("Ion Type Counts", "Ion Type Intensities", "Annotation"):
+            if child.text() in (
+                "Ion Type Counts",
+                "Ion Type Intensities",
+                "Annotation",
+            ):
                 child.setStyleSheet(f"""
                     QLabel {{
                         font-size: 12px;
@@ -367,7 +408,10 @@ class PeptideInfoWidget(QWidget):
         """)
 
         # Recreate ion count/intensity charts with new theme
-        if hasattr(self, 'current_matched_data') and self.current_matched_data is not None:
+        if (
+            hasattr(self, "current_matched_data")
+            and self.current_matched_data is not None
+        ):
             self.update_ion_counts(self.current_matched_data)
             self.update_ion_intensities(self.current_matched_data)
 
@@ -390,8 +434,15 @@ class PeptideInfoWidget(QWidget):
     # UPDATE ENTRY POINT
     # ================================================================
 
-    def update_peptide_info(self, peptide="", fragmented_bonds="", annotated_tic="",
-                            matched_data=None, rescore=None, theoretical_data=None):
+    def update_peptide_info(
+        self,
+        peptide="",
+        fragmented_bonds="",
+        annotated_tic="",
+        matched_data=None,
+        rescore=None,
+        theoretical_data=None,
+    ):
         """Update all peptide information.
 
         rescore can be:
@@ -414,16 +465,18 @@ class PeptideInfoWidget(QWidget):
 
         # Update score labels
         if rescore is not None and isinstance(rescore, dict):
-            hs = rescore.get('xtandem', 0.0)
+            hs = rescore.get("xtandem", 0.0)
             self.rescore_label.setText(f"X!Tandem: {hs:.4f}" if hs else "X!Tandem: -")
 
-            consec = rescore.get('consecutive_series')
+            consec = rescore.get("consecutive_series")
             if consec is not None and isinstance(consec, dict):
                 self.consecutive_label.setVisible(True)
-                longest = consec.get('longest', 0)
-                per_type = consec.get('per_type', {})
+                longest = consec.get("longest", 0)
+                per_type = consec.get("per_type", {})
                 if per_type:
-                    details = ", ".join(f"{k}:{v}" for k, v in sorted(per_type.items()) if v > 0)
+                    details = ", ".join(
+                        f"{k}:{v}" for k, v in sorted(per_type.items()) if v > 0
+                    )
                     self.consecutive_label.setText(
                         f"Longest Consecutive: {longest}  ({details})"
                     )
@@ -432,34 +485,25 @@ class PeptideInfoWidget(QWidget):
             else:
                 self.consecutive_label.setVisible(False)
 
-            comp = rescore.get('complementary_pairs')
+            comp = rescore.get("complementary_pairs")
             if comp is not None and isinstance(comp, dict):
                 self.complementary_label.setVisible(True)
-                pairs = comp.get('pairs', 0)
-                possible = comp.get('possible', 0)
+                pairs = comp.get("pairs", 0)
+                possible = comp.get("possible", 0)
                 self.complementary_label.setText(
                     f"Complementary Pairs: {pairs}/{possible}"
                 )
             else:
                 self.complementary_label.setVisible(False)
 
-            morph = rescore.get('morpheus_score')
-            if morph is not None:
-                self.morpheus_label.setVisible(True)
-                self.morpheus_label.setText(f"Morpheus Score: {morph:.4f}")
-            else:
-                self.morpheus_label.setVisible(False)
-
         elif rescore is not None:
             self.rescore_label.setText(f"X!Tandem: {rescore:.4f}")
             self.consecutive_label.setVisible(False)
             self.complementary_label.setVisible(False)
-            self.morpheus_label.setVisible(False)
         else:
             self.rescore_label.setText("X!Tandem: -")
             self.consecutive_label.setVisible(False)
             self.complementary_label.setVisible(False)
-            self.morpheus_label.setVisible(False)
 
         # Update ion counts and intensities
         self.update_ion_counts(matched_data)
@@ -472,7 +516,14 @@ class PeptideInfoWidget(QWidget):
     def _update_pie_charts(self, peptide, matched_data, theoretical_data):
         """Compute stats and update the four annotation donut charts."""
         if matched_data is None or matched_data.empty:
-            for w in [self.pie_theor, self.pie_peaks, self.pie_int, self.pie_cov]:
+            for w in [
+                self.pie_theor,
+                self.pie_peaks,
+                self.pie_int,
+                self.pie_cov,
+                self.pie_cov_intact,
+                self.pie_cov_partial,
+            ]:
                 w.set_data(0, 1, "", "\u2013")
             return
 
@@ -486,26 +537,34 @@ class PeptideInfoWidget(QWidget):
         if theoretical_data is not None and not theoretical_data.empty:
             theor_total = len(theoretical_data)
             mono_matched = matched_data[mask].copy()
-            if 'Isotope' in mono_matched.columns:
+            if "Isotope" in mono_matched.columns:
                 mono_matched = mono_matched[
-                    pd.to_numeric(mono_matched['Isotope'], errors='coerce') == 0
+                    pd.to_numeric(mono_matched["Isotope"], errors="coerce") == 0
                 ]
-            if 'Ion Type' in mono_matched.columns and 'Ion Number' in mono_matched.columns:
+            if (
+                "Ion Type" in mono_matched.columns
+                and "Ion Number" in mono_matched.columns
+            ):
                 theor_matched = mono_matched.drop_duplicates(
-                    subset=['Ion Type', 'Ion Number']
+                    subset=["Ion Type", "Ion Number"]
                 ).shape[0]
             else:
                 theor_matched = len(mono_matched)
-        self.pie_theor.set_data(theor_matched, theor_total, "theor. frag.",
-                                f"{theor_matched}/{theor_total}")
+        self.pie_theor.set_data(
+            theor_matched, theor_total, "theor. frag.", f"{theor_matched}/{theor_total}"
+        )
 
         # ── Pie 2: Peaks annotated ──
-        self.pie_peaks.set_data(matched_peaks_count, total_peaks, "peaks",
-                                f"{matched_peaks_count}/{total_peaks}")
+        self.pie_peaks.set_data(
+            matched_peaks_count,
+            total_peaks,
+            "peaks",
+            f"{matched_peaks_count}/{total_peaks}",
+        )
 
         # ── Pie 3: Annotated TIC (intensity) — show as percentage ──
-        total_int = matched_data['intensity'].sum()
-        matched_int = matched_data[mask]['intensity'].sum()
+        total_int = matched_data["intensity"].sum()
+        matched_int = matched_data[mask]["intensity"].sum()
         if total_int > 0:
             pct = (matched_int / total_int) * 100
             int_text = f"{pct:.1f}%"
@@ -515,18 +574,97 @@ class PeptideInfoWidget(QWidget):
 
         # ── Pie 4: Fragmented bonds (coverage) ──
         cov_num, cov_den = self._parse_fraction(
-            getattr(self, 'current_fragmented_bonds', '0/0')
+            getattr(self, "current_fragmented_bonds", "0/0")
         )
         self.pie_cov.set_data(cov_num, cov_den, "cov.", f"{cov_num}/{cov_den}")
+
+        # ── Pie 5: Intact modification coverage ──
+        # Only base ions (no *, ^, ~ modification tags)
+        intact_num, intact_den = self._calculate_filtered_coverage(
+            peptide, matched_data, {"*", "^", "~"}
+        )
+        self.pie_cov_intact.set_data(
+            intact_num, intact_den, "intact cov.", f"{intact_num}/{intact_den}"
+        )
+
+        # ── Pie 6: Partial modification coverage ──
+        # Everything except labile loss (~)
+        partial_num, partial_den = self._calculate_filtered_coverage(
+            peptide, matched_data, {"~"}
+        )
+        self.pie_cov_partial.set_data(
+            partial_num, partial_den, "partial cov.", f"{partial_num}/{partial_den}"
+        )
 
     @staticmethod
     def _parse_fraction(text):
         """Parse '8/14' style string into (numerator, denominator)."""
         try:
-            parts = text.split('/')
+            parts = text.split("/")
             return int(parts[0]), int(parts[1])
         except (ValueError, IndexError):
             return 0, 0
+
+    def _calculate_filtered_coverage(self, peptide, matched_data, exclude_chars):
+        """Calculate backbone coverage excluding ions whose Ion Type contains any char in exclude_chars.
+
+        Returns (numerator, denominator).
+        """
+        if not peptide or matched_data is None or matched_data.empty:
+            return 0, 0
+
+        potential_fragments = (len(peptide) * 2) - 2
+
+        matched_df = matched_data[matched_mask(matched_data)].copy()
+        if matched_df.empty:
+            return 0, potential_fragments
+
+        # Filter out ions with excluded modification characters in Ion Type
+        if "Ion Type" in matched_df.columns and exclude_chars:
+            excluded_pattern = "|".join(map(re.escape, exclude_chars))
+            if excluded_pattern:
+                ion_types = matched_df["Ion Type"].astype(str)
+                matched_df = matched_df[
+                    ~ion_types.str.contains(excluded_pattern, regex=True, na=False)
+                ]
+
+        unique_fragments = self._extract_backbone_fragment_keys(matched_df)
+
+        return len(unique_fragments), potential_fragments
+
+    @staticmethod
+    def _extract_backbone_fragment_keys(df):
+        """Return unique backbone fragment keys grouped by N- and C-terminal series."""
+        if df is None or df.empty:
+            return set()
+
+        col_idx = {col: pos for pos, col in enumerate(df.columns)}
+        idx_base_type = col_idx.get("Base Type")
+        idx_ion_number = col_idx.get("Ion Number")
+        if idx_base_type is None or idx_ion_number is None:
+            return set()
+
+        c_terminal_series = {"y", "z", "x"}
+        n_terminal_series = {"b", "c", "a"}
+        unique_fragments = set()
+
+        for row_tuple in df.itertuples(index=False, name=None):
+            base_type = str(row_tuple[idx_base_type]).strip()
+            ion_number = row_tuple[idx_ion_number]
+            if not base_type or pd.isna(ion_number):
+                continue
+
+            try:
+                ion_num = int(ion_number)
+            except (ValueError, TypeError):
+                continue
+
+            if base_type in c_terminal_series:
+                unique_fragments.add(("yzx", ion_num))
+            elif base_type in n_terminal_series:
+                unique_fragments.add(("bca", ion_num))
+
+        return unique_fragments
 
     # ================================================================
     # ION TYPE DISTRIBUTION PIE CHARTS
@@ -609,18 +747,29 @@ class PeptideInfoWidget(QWidget):
 
         # Only monoisotopic peaks
         base_peaks = matched_peaks[
-            pd.to_numeric(matched_peaks['Isotope'], errors='coerce') == 0
+            pd.to_numeric(matched_peaks["Isotope"], errors="coerce") == 0
         ]
 
         base_counts = {}
         ion_type_counts = {}  # keyed by (base_type, ion_type)
 
-        if 'Ion Type' in base_peaks.columns and 'Base Type' in base_peaks.columns:
-            for _, row in base_peaks.iterrows():
-                base_type = str(row['Base Type']).strip()
-                ion_type = str(row['Ion Type']).strip()
+        if "Ion Type" in base_peaks.columns and "Base Type" in base_peaks.columns:
+            col_idx = {col: pos for pos, col in enumerate(base_peaks.columns, start=1)}
+            idx_base_type = col_idx.get("Base Type")
+            idx_ion_type = col_idx.get("Ion Type")
+            for row_tuple in base_peaks.itertuples(index=False, name=None):
+                base_type = (
+                    str(row_tuple[idx_base_type - 1]).strip()
+                    if idx_base_type is not None
+                    else ""
+                )
+                ion_type = (
+                    str(row_tuple[idx_ion_type - 1]).strip()
+                    if idx_ion_type is not None
+                    else ""
+                )
 
-                if not base_type or base_type in ('', 'nan', 'None'):
+                if not base_type or base_type in ("", "nan", "None"):
                     continue
 
                 base_counts[base_type] = base_counts.get(base_type, 0) + 1
@@ -645,23 +794,7 @@ class PeptideInfoWidget(QWidget):
         if matched_df.empty:
             return f"0/{potential_fragments}"
 
-        unique_fragments = set()
-        for _, row in matched_df.iterrows():
-            base_type = str(row.get('Base Type', '')).strip()
-            ion_number = row.get('Ion Number', '')
-
-            if not base_type or pd.isna(ion_number):
-                continue
-            try:
-                ion_num = int(ion_number)
-                if base_type in ['y', 'z', 'x']:
-                    unique_fragments.add(('yzx', ion_num))
-                elif base_type in ['b', 'c', 'a']:
-                    unique_fragments.add(('bca', ion_num))
-            except (ValueError, TypeError):
-                continue
-
-        observed_fragments = len(unique_fragments)
+        observed_fragments = len(self._extract_backbone_fragment_keys(matched_df))
         return f"{observed_fragments}/{potential_fragments}"
 
     def calculate_annotated_percentage(self, matched_data):
@@ -670,8 +803,8 @@ class PeptideInfoWidget(QWidget):
             return "0.0%"
 
         mask = matched_mask(matched_data)
-        total_intensity = matched_data['intensity'].sum()
-        matched_intensity = matched_data[mask]['intensity'].sum()
+        total_intensity = matched_data["intensity"].sum()
+        matched_intensity = matched_data[mask]["intensity"].sum()
 
         if total_intensity > 0:
             annotated_percentage = (matched_intensity / total_intensity) * 100
@@ -698,27 +831,47 @@ class PeptideInfoWidget(QWidget):
             return {}, {}
 
         base_peaks = matched_peaks[
-            pd.to_numeric(matched_peaks['Isotope'], errors='coerce') == 0
+            pd.to_numeric(matched_peaks["Isotope"], errors="coerce") == 0
         ]
 
-        intensity_col = 'intensity' if 'intensity' in base_peaks.columns else 'Intensity'
+        intensity_col = (
+            "intensity" if "intensity" in base_peaks.columns else "Intensity"
+        )
         base_intensities = {}
         ion_type_intensities = {}
 
-        if 'Ion Type' in base_peaks.columns and 'Base Type' in base_peaks.columns:
-            for _, row in base_peaks.iterrows():
-                base_type = str(row['Base Type']).strip()
-                ion_type = str(row['Ion Type']).strip()
+        if "Ion Type" in base_peaks.columns and "Base Type" in base_peaks.columns:
+            col_idx = {col: pos for pos, col in enumerate(base_peaks.columns, start=1)}
+            idx_base_type = col_idx.get("Base Type")
+            idx_ion_type = col_idx.get("Ion Type")
+            idx_intensity = col_idx.get(intensity_col)
+            for row_tuple in base_peaks.itertuples(index=False, name=None):
+                base_type = (
+                    str(row_tuple[idx_base_type - 1]).strip()
+                    if idx_base_type is not None
+                    else ""
+                )
+                ion_type = (
+                    str(row_tuple[idx_ion_type - 1]).strip()
+                    if idx_ion_type is not None
+                    else ""
+                )
 
-                if not base_type or base_type in ('', 'nan', 'None'):
+                if not base_type or base_type in ("", "nan", "None"):
                     continue
 
                 try:
-                    intensity = float(row.get(intensity_col, 0))
+                    intensity = (
+                        float(row_tuple[idx_intensity - 1])
+                        if idx_intensity is not None
+                        else 0
+                    )
                 except (ValueError, TypeError):
                     continue
 
-                base_intensities[base_type] = base_intensities.get(base_type, 0) + intensity
+                base_intensities[base_type] = (
+                    base_intensities.get(base_type, 0) + intensity
+                )
                 key = (base_type, ion_type)
                 ion_type_intensities[key] = ion_type_intensities.get(key, 0) + intensity
 
@@ -744,7 +897,9 @@ class PeptideInfoWidget(QWidget):
             self.ion_intensities_layout.addWidget(no_data)
             return
 
-        base_intensities, ion_type_intensities = self.calculate_ion_intensities(matched_data)
+        base_intensities, ion_type_intensities = self.calculate_ion_intensities(
+            matched_data
+        )
 
         charts = []
         for base_type, base_int in base_intensities.items():
@@ -761,8 +916,7 @@ class PeptideInfoWidget(QWidget):
                 segments = [(base_type, base_int)]
 
             chart = IonDistributionWidget()
-            chart.set_data(base_type, base_int, segments,
-                           formatted_title=base_type)
+            chart.set_data(base_type, base_int, segments, formatted_title=base_type)
             charts.append(chart)
 
         grid_widget = QWidget()
@@ -784,42 +938,54 @@ class PeptideInfoWidget(QWidget):
         data = {}
 
         # Annotation donut summaries
-        data['Theor. Frags Matched'] = self.pie_theor._numerator
-        data['Theor. Frags Total'] = self.pie_theor._denominator
-        data['Peaks Matched'] = self.pie_peaks._numerator
-        data['Peaks Total'] = self.pie_peaks._denominator
-        data['Annotated Intensity'] = self.pie_int._value_text
-        data['Bond Coverage'] = self.pie_cov._value_text
+        data["Theor. Frags Matched"] = self.pie_theor._numerator
+        data["Theor. Frags Total"] = self.pie_theor._denominator
+        data["Peaks Matched"] = self.pie_peaks._numerator
+        data["Peaks Total"] = self.pie_peaks._denominator
+        data["Annotated Intensity"] = self.pie_int._value_text
+        data["Bond Coverage"] = self.pie_cov._value_text
+        data["Intact Coverage"] = self.pie_cov_intact._value_text
+        data["Partial Coverage"] = self.pie_cov_partial._value_text
 
         # Fragmented bonds / annotated TIC
-        data['Fragmented Bonds'] = getattr(self, 'current_fragmented_bonds', '')
-        data['Annotated TIC'] = getattr(self, 'current_annotated_tic', '')
+        data["Fragmented Bonds"] = getattr(self, "current_fragmented_bonds", "")
+        data["Annotated TIC"] = getattr(self, "current_annotated_tic", "")
 
         # Scores (extract from labels)
         score_labels = [
-            (self.rescore_label, 'X!Tandem'),
-            (self.consecutive_label, 'Longest Consecutive'),
-            (self.complementary_label, 'Complementary Pairs'),
-            (self.morpheus_label, 'Morpheus Score'),
+            (self.rescore_label, "X!Tandem"),
+            (self.consecutive_label, "Longest Consecutive"),
+            (self.complementary_label, "Complementary Pairs"),
         ]
         for label_widget, key in score_labels:
             if label_widget.isVisible():
                 text = label_widget.text()
-                if ':' in text:
-                    value = text.split(':', 1)[1].strip()
-                    if value and value != '-':
+                if ":" in text:
+                    value = text.split(":", 1)[1].strip()
+                    if value and value != "-":
                         data[key] = value
 
         # Ion counts and intensities per sub-type
-        if self.current_matched_data is not None and not self.current_matched_data.empty:
-            base_counts, ion_type_counts = self.calculate_ion_counts(self.current_matched_data)
+        if (
+            self.current_matched_data is not None
+            and not self.current_matched_data.empty
+        ):
+            base_counts, ion_type_counts = self.calculate_ion_counts(
+                self.current_matched_data
+            )
             for (base, ion_type), count in ion_type_counts.items():
-                data[f'{ion_type} Count'] = count
+                data[f"{ion_type} Count"] = count
 
-            base_int, ion_type_int = self.calculate_ion_intensities(self.current_matched_data)
+            base_int, ion_type_int = self.calculate_ion_intensities(
+                self.current_matched_data
+            )
             for (base, ion_type), intensity in ion_type_int.items():
-                pct = (intensity / base_int[base] * 100) if base_int.get(base, 0) > 0 else 0
-                data[f'{ion_type} Intensity'] = round(intensity, 2)
-                data[f'{ion_type} Intensity %'] = f"{pct:.1f}"
+                pct = (
+                    (intensity / base_int[base] * 100)
+                    if base_int.get(base, 0) > 0
+                    else 0
+                )
+                data[f"{ion_type} Intensity"] = round(intensity, 2)
+                data[f"{ion_type} Intensity %"] = f"{pct:.1f}"
 
         return data

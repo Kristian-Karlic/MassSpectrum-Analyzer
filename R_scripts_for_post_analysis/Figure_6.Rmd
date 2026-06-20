@@ -1,0 +1,1034 @@
+---
+title: 'C-tails'
+author: "Kristian Karlic"
+date: "6/12/2024"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+### Installing and loading required packages
+``` {r setup, include = FALSE}
+#List of packages required for the code
+required_Packages_Install <- c("RColorBrewer", "readxl", "dplyr", "broom", "tidyr",
+                               "magrittr", "devtools", "scales", "purrr", "stringr",
+                               "ggrepel", "gridExtra", "Peptides","plyr", "ggstance",
+                               "UpSetR", "ggpubr", "viridis", "openxlsx","stringr",
+                               "matrixStats", "ggprism", "patchwork", "BiocManager",
+                               "UpSetR", "ggupset", "eulerr", 'ggalluvial', 'reshape2',
+                               'cowplot', "ggVennDiagram", "forcats", "tibble","readr", "ggplot2", "extrafont", "ggthemes", "pROC", "effsize", "ggbreak")
+
+
+
+#Checks if packages are installed, and will download if needed otherwise will load them in
+for(Package in required_Packages_Install){
+  if(!require(Package,character.only = TRUE)) { 
+      install.packages(Package, dependencies=TRUE)
+  }
+  library(Package,character.only = TRUE)
+}
+
+
+rstudioapi::writeRStudioPreference("data_viewer_max_columns", 1000L)
+cbPalette <- c("#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3", "#A6D854", "#FFD92F", "#E5C494", "#B3B3B3")
+knitr::opts_chunk$set(include = FALSE)
+
+
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+
+
+#Functions
+```{r}
+load_data <- function(file, group, protein_col, group_col = "Protein") {
+  df <- read.csv(file)
+  df$Group <- group
+  df$mokapot_qvalue <- if ("mokapot.q.value" %in% names(df)) df$mokapot.q.value else df$mokapot_qvalue
+  df
+}
+
+summarise_psms <- function(df, protein_col, protein_filter, fdr_thresholds = c(0.01, 0.05),
+                            count_fn = n, peptide_col = NULL) {
+  map_dfr(fdr_thresholds, function(fdr) {
+    df %>%
+      filter(grepl(protein_filter, .data[[protein_col]])) %>%
+      filter(!grepl("rev", .data[[protein_col]])) %>%
+      filter(mokapot_qvalue <= fdr) %>%
+      group_by(Group, Replicate) %>%
+      dplyr::summarise(
+        n_PSMs = if (is.null(peptide_col)) n() else n_distinct(.data[[peptide_col]]),
+        .groups = "drop"
+      ) %>%
+      mutate(FDR = paste0(fdr * 100, "% FDR"))
+  })
+}
+
+build_psm_plot <- function(psm_long, y_label = "Number of PSMs", title = "title") {
+  psm_summary <- psm_long %>%
+    group_by(Score_Method, FDR_Level) %>%
+    dplyr::summarise(mean_PSMs = mean(n_PSMs), .groups = "drop")
+
+  percent_increase <- psm_summary %>%
+    tidyr::pivot_wider(names_from = Score_Method, values_from = mean_PSMs) %>%
+    mutate(
+      pct_increase = (Rescore - Hyperscore) / Hyperscore * 100,
+      label = paste0("+", round(pct_increase, 1), "%")
+    )
+
+  ggplot() +
+    geom_col(
+      data     = psm_summary,
+      aes(x = FDR_Level, y = mean_PSMs, fill = Score_Method),
+      colour = "black", linewidth = 0.3, width = 0.6,
+      position = position_dodge(width = 0.7), show.legend = FALSE
+    ) +
+    geom_point(
+      data = psm_long,
+      aes(x = FDR_Level, y = n_PSMs, group = interaction(Replicate, Score_Method)),
+      size = 1, colour = "black",
+      position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.7)
+    ) +
+    geom_text(
+      data = percent_increase,
+      aes(x = FDR_Level, y = pmax(Rescore, Hyperscore) * 1.10, label = label),
+      inherit.aes = FALSE, fontface = "bold", size = 4
+    ) +
+    geom_text(
+      data = psm_summary,
+      aes(x = FDR_Level, y = mean_PSMs,
+          label = scales::comma(round(mean_PSMs)), group = Score_Method),
+      vjust = -0.5, fontface = "bold", size = 3,
+      position = position_dodge(width = 0.7)
+    ) +
+    scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.2))) +
+    scale_fill_manual(values = c("Hyperscore" = "#66C2A5", "Rescore" = "#E5C494"), name = "Score Type") +
+    labs(x = "FDR Level", y = y_label, title = title) +
+    theme_foundation(base_size = base_size, base_family = "sans") +
+    theme(
+      panel.grid   = element_blank(),
+      panel.border = element_blank(), panel.background = element_blank(),
+      plot.background = element_blank(),
+      plot.title      = element_text(face = "bold",
+                                     size = rel(1), hjust = 0.5),
+      text         = element_text(colour = "black"),
+      axis.line    = element_line(colour = "black", size = line_size),
+      axis.ticks   = element_line(colour = "black", size = line_size),
+      axis.title   = element_text(face = "bold", size = rel(1)),
+      axis.title.y = element_text(angle = 90, vjust = 2),
+      axis.title.x = element_blank(),
+      axis.text    = element_text(face = "bold", colour = "black"),
+      legend.title = element_text(face = "bold"),
+      legend.text  = element_text(colour = "black"),
+      legend.background = element_rect(fill = "white", colour = "grey80"),
+      legend.position = "right"
+    )
+}
+
+make_qvalue_plot <- function(df, group_label) {
+  
+  n_target_total <- sum(df$PSM_Type == "Target")
+  n_decoy_total  <- sum(df$PSM_Type == "Decoy")
+  n_target_1pct  <- sum(df$PSM_Type == "Target" & df$mokapot_qvalue <= 0.01)
+  n_decoy_1pct   <- sum(df$PSM_Type == "Decoy"  & df$mokapot_qvalue <= 0.01)
+  n_target_5pct  <- sum(df$PSM_Type == "Target" & df$mokapot_qvalue <= 0.05)
+  n_decoy_5pct   <- sum(df$PSM_Type == "Decoy"  & df$mokapot_qvalue <= 0.05)
+  
+  annotation_text <- paste0(
+    "Total:  Target = ", scales::comma(n_target_total), "  |  Decoy = ", scales::comma(n_decoy_total), "\n",
+    "1% FDR: Target = ", scales::comma(n_target_1pct),  "  |  Decoy = ", scales::comma(n_decoy_1pct),  "\n",
+    "5% FDR: Target = ", scales::comma(n_target_5pct),  "  |  Decoy = ", scales::comma(n_decoy_5pct)
+  )
+  
+  df %>%
+    ggplot(aes(x = mokapot_qvalue, fill = PSM_Type, colour = PSM_Type)) +
+    geom_density(alpha = 0.35, linewidth = 0.8, adjust = 1.2) +
+    geom_vline(xintercept = 0.01, linetype = "dashed", colour = "grey30", linewidth = 0.7) +
+    geom_vline(xintercept = 0.05, linetype = "dotted", colour = "grey30", linewidth = 0.7) +
+    annotate("text", x = 0.01, y = Inf, label = "1% FDR", hjust = -0.1, vjust = 2,
+             size = 3.5, colour = "grey30", fontface = "bold") +
+    annotate("text", x = 0.05, y = Inf, label = "5% FDR", hjust = -0.1, vjust = 2,
+             size = 3.5, colour = "grey30", fontface = "bold") +
+    annotate("label", x = 0.5, y = Inf, label = annotation_text,
+             hjust = 1, vjust = 1.5, size = 3.2, colour = "black",
+             fill = "white", family = "mono") +
+    scale_fill_manual(values   = c("Decoy" = "#E87B3E", "Target" = "#4472C4"), name = NULL) +
+    scale_colour_manual(values = c("Decoy" = "#E87B3E", "Target" = "#4472C4"), name = NULL) +
+    scale_x_continuous(limits = c(0, 0.5), labels = scales::label_number(), expand = c(0,0)) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+    labs(title = group_label, x = "Mokapot Q-value", y = "Density") +
+    theme_foundation(base_size = base_size, base_family = "sans") +
+    theme(
+      panel.grid.major     = element_blank(),
+      panel.grid.minor     = element_blank(),
+      panel.border         = element_blank(),
+      panel.background     = element_blank(),
+      text                 = element_text(colour = "black"),
+      plot.title           = element_text(face = "bold",
+                               size = rel((title_text_rel_size + base_size) / base_size), hjust = 0.5),
+      axis.line            = element_line(colour = "black", size = line_size),
+      axis.ticks           = element_line(colour = "black", size = line_size),
+      axis.title           = element_text(face = "bold", size = rel(1)),
+      axis.title.y         = element_text(angle = 90, vjust = 2),
+      axis.title.x         = element_text(vjust = -0.2),
+      axis.text            = element_text(face = "bold", colour = "black"),
+      legend.title         = element_text(face = "bold"),
+      legend.text          = element_text(size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+      legend.background    = element_rect(fill = "white", colour = "grey80"),
+      plot.background      = element_blank(),
+      legend.position      = c(0.95, 0.6),
+      legend.justification = c(1, 1)
+    )
+}
+
+
+get_exclusive_peptides <- function(data_rescore, data_hyperscore,
+                                    protein_col_rescore    = "Protein",
+                                    protein_col_hyperscore = "Proteins",
+                                    peptide_col            = "Peptide",
+                                    protein_filter         = PROTEIN_FILTER,
+                                    fdr                    = 0.05) {
+  
+  peptides_rescore <- data_rescore %>%
+    filter(grepl(protein_filter, .data[[protein_col_rescore]])) %>%
+    filter(!grepl("rev", .data[[protein_col_rescore]])) %>%
+    filter(mokapot_qvalue <= fdr) %>%
+    pull(.data[[peptide_col]]) %>%
+    unique()
+  
+  peptides_hyperscore <- data_hyperscore %>%
+    filter(grepl(protein_filter, .data[[protein_col_hyperscore]])) %>%
+    filter(!grepl("rev", .data[[protein_col_hyperscore]])) %>%
+    filter(mokapot_qvalue <= fdr) %>%
+    pull(.data[[peptide_col]]) %>%
+    unique()
+  
+  exclusive <- setdiff(peptides_rescore, peptides_hyperscore)
+  
+  # Return full rows from rescore for those peptides, with best q-value per peptide
+  data_rescore %>%
+    filter(.data[[peptide_col]] %in% exclusive) %>%
+    filter(grepl(protein_filter, .data[[protein_col_rescore]])) %>%
+    filter(!grepl("rev", .data[[protein_col_rescore]])) %>%
+    group_by(.data[[peptide_col]]) %>%
+    slice_min(mokapot_qvalue, n = 1, with_ties = FALSE) %>%
+    ungroup() %>%
+    arrange(mokapot_qvalue) %>%
+    filter(grepl("84.", Assigned.Modifications))
+
+}
+
+
+
+```
+
+
+#Load AETMA data
+```{r}
+data_perc <- load_data("combined_mokapot.csv", group = "Hyperscore", protein_col = "Proteins") %>%
+  mutate(
+    PSM_Type  = ifelse(grepl("rev_", Proteins), "Decoy", "Target"),
+    Replicate = case_when(
+      grepl("A1", source_file) ~ 1, grepl("A2", source_file) ~ 2,
+      grepl("A3", source_file) ~ 3, grepl("A4", source_file) ~ 4,
+      TRUE ~ NA_integer_
+    ),
+    Peptide = Peptide %>%
+      str_remove("^[A-Z-]\\.") %>% str_remove("\\d+\\.[A-Z-]$") %>%
+      str_remove_all("\\[.*?\\]") %>% str_remove("^n")
+  )
+
+data_perc <- data_perc %>%
+  mutate(Peptide = Peptide %>%
+    str_remove("^n") %>%   # remove leading lowercase n
+    str_remove("c$")       # remove trailing lowercase c
+  )
+
+data <- read.csv("rescoring_results_AETMA_10ppm_final.csv")
+data$Group <- "Rescore"
+
+# ── Build plots — change "AGH" to any protein filter you want ─────────────────
+
+PROTEIN_FILTER <- "AGH"   # <-- only thing you need to change
+
+psm_long_all <- bind_rows(
+  summarise_psms(data,      protein_col = "Protein",  protein_filter = PROTEIN_FILTER),
+  summarise_psms(data_perc, protein_col = "Proteins", protein_filter = PROTEIN_FILTER)
+) %>% dplyr::rename(Score_Method = Group, FDR_Level = FDR)
+
+psm_long_unique <- bind_rows(
+  summarise_psms(data,      "Protein",  PROTEIN_FILTER, peptide_col = "Peptide"),
+  summarise_psms(data_perc, "Proteins", PROTEIN_FILTER, peptide_col = "Peptide")
+) %>% dplyr::rename(Score_Method = Group, FDR_Level = FDR)
+
+
+
+# ── Usage ─────────────────────────────────────────────────────────────────────
+
+exclusive_peptides_1pct <- get_exclusive_peptides(data, data_perc, protein_filter = "AGH")
+
+# Quick summary
+cat("Peptides exclusive to Rescore at 5% FDR:", nrow(exclusive_peptides_1pct), "\n")
+
+```
+
+
+#AETMA graphs
+```{r}
+
+
+p_psm_bar        <- build_psm_plot(psm_long_all,    y_label = "Number of PSMs", title = "AETMA PSMs")
+p_psm_bar_unique <- build_psm_plot(psm_long_unique, y_label = "Unique Peptides", title = "AETMA Unique Peptides")
+
+# ============================================================
+# TARGET-DECOY SCORE DISTRIBUTION PLOT
+# ============================================================
+# ── Helper function to avoid repeating plot code ──────────────────────────────
+
+# ── Generate plots ─────────────────────────────────────────────────────────────
+p_score_dist_rescore    <- make_qvalue_plot(data %>% filter(Group == "Rescore"),       "Rescore")
+p_score_dist_hyperscore <- make_qvalue_plot(data_perc %>% filter(Group == "Hyperscore"), "Hyperscore")
+
+p_score_dist_rescore
+p_score_dist_hyperscore
+
+# ── FDR Curve ─────────────────────────────────────────────────────────────────
+fdr_curve <- bind_rows(
+  data      %>% filter(PSM_Type == "Target") %>% arrange(mokapot_qvalue) %>%
+    mutate(cumulative_PSMs = row_number(), Source = "Rescore"),
+  data_perc %>% filter(PSM_Type == "Target") %>% arrange(mokapot_qvalue) %>%
+    mutate(cumulative_PSMs = row_number(), Source = "Hyperscore")
+)
+
+p_fdr_curve <- ggplot(fdr_curve, aes(x = mokapot_qvalue, y = cumulative_PSMs, colour = Source)) +
+  geom_line(linewidth = 1, show.legend = FALSE) +
+  geom_vline(xintercept = 0.01, linetype = "dashed", colour = "grey30", linewidth = 1.5, show.legend = FALSE) +
+  geom_vline(xintercept = 0.05, linetype = "dashed", colour = "red", linewidth = 1.5, show.legend = FALSE) +
+  annotate("text", x = 0.01, y = Inf, label = "1% FDR", hjust = -0.1, vjust = 2,
+           size = 4, colour = "grey30", fontface = "bold") +
+  annotate("text", x = 0.05, y = Inf, label = "5% FDR", hjust = -0.1, vjust = 2,
+           size = 4, colour = "red", fontface = "bold") +
+  scale_colour_manual(
+    values = c("Rescore" = "#E5C494", "Hyperscore" = "#66C2A5"),
+    name   = "Method"
+  ) +
+  scale_x_continuous(limits = c(0, 0.1), labels = scales::label_number()) +
+  scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.1)), limits = c(0,30000)) +
+  labs(x = "Q-value", y = "Cumulative Target PSMs", title = "Cumulative Target PSMs") +
+  theme_foundation(base_size = base_size, base_family = "sans") +
+  theme(
+    panel.grid.major     = element_blank(),
+    panel.grid.minor     = element_blank(),
+    panel.border         = element_blank(),
+    panel.background     = element_blank(),
+          plot.title      = element_text(face = "bold",
+                                     size = rel(1), hjust = 0.5),
+    text                 = element_text(colour = "black"),
+    axis.line            = element_line(colour = "black", size = line_size),
+    axis.ticks           = element_line(colour = "black", size = line_size),
+    axis.title           = element_text(face = "bold", size = rel(1)),
+    axis.title.y         = element_text(angle = 90, vjust = 2),
+    axis.title.x         = element_blank(),
+    axis.text            = element_text(face = "bold", colour = "black"),
+    plot.background      = element_blank()
+  )
+
+p_fdr_curve
+
+```
+
+#ROC decoy seperatio
+```{r}
+data <- read.csv("rescoring_results_AETMA_10ppm_final.csv")
+data$Group <- "Rescore"
+
+# ── Parameters ──────────────────────────────────────────────────────────────
+base_size          <- 12
+axis_text_rel_size <- 2
+title_text_rel_size <- 2
+line_size          <- 0.5
+
+# ── 1. Summary ──────────────────────────────────────────────────────────────
+summary_table <- data %>%
+  group_by(PSM_Type) %>%
+  dplyr::summarise(
+    n = n(),
+    across(c(Rescore, Hyperscore),
+           list(
+             mean   = ~mean(.x, na.rm = TRUE),
+             median = ~median(.x, na.rm = TRUE),
+             sd     = ~sd(.x, na.rm = TRUE),
+             min    = ~min(.x, na.rm = TRUE),
+             max    = ~max(.x, na.rm = TRUE)
+           ),
+           .names = "{.col}_{.fn}"
+    ),
+    .groups = "drop"
+  )
+
+print(summary_table)
+
+
+# ── Separation ──────────────────────────────────────────────────────────────
+separation <- summary_table %>%
+  dplyr::summarise(
+    Rescore_median_diff =
+      Rescore_median[PSM_Type=="Target"] - Rescore_median[PSM_Type=="Decoy"],
+    Hyperscore_median_diff =
+      Hyperscore_median[PSM_Type=="Target"] - Hyperscore_median[PSM_Type=="Decoy"],
+
+    Rescore_mean_diff =
+      Rescore_mean[PSM_Type=="Target"] - Rescore_mean[PSM_Type=="Decoy"],
+    Hyperscore_mean_diff =
+      Hyperscore_mean[PSM_Type=="Target"] - Hyperscore_mean[PSM_Type=="Decoy"]
+  )
+
+print(separation)
+
+# ── AUCs ────────────────────────────────────────────────────────────────────
+auc_rescore <- roc(data$PSM_Type, data$Rescore,
+                   levels=c("Decoy","Target"), direction="<")$auc
+
+auc_hyperscore <- roc(data$PSM_Type, data$Hyperscore,
+                      levels=c("Decoy","Target"), direction="<")$auc
+
+
+# ── ROC curves ──────────────────────────────────────────────────────────────
+roc_rescore <- roc(data$PSM_Type, data$Rescore, levels=c("Decoy","Target"))
+roc_hyper   <- roc(data$PSM_Type, data$Hyperscore, levels=c("Decoy","Target"))
+
+
+roc_df <- bind_rows(
+  data.frame(TPR=roc_rescore$sensitivities,
+             FPR=1-roc_rescore$specificities,
+             Score="Rescore"),
+
+  data.frame(TPR=roc_hyper$sensitivities,
+             FPR=1-roc_hyper$specificities,
+             Score="Hyperscore")
+)
+
+p_roc <- ggplot(roc_df, aes(FPR, TPR, colour=Score)) +
+  geom_line(size=1) +
+  geom_abline(linetype="dashed") +
+  labs(title="ROC Curve", x="False Positive Rate", y="True Positive Rate") +
+  annotate("text", x=0.6, y=0.2,
+           label=paste0(
+             "Rescore = ", round(auc_rescore,3),
+             "\nHyperscore = ", round(auc_hyperscore,3)
+           )) +
+    scale_colour_manual(
+    values = c("Rescore" = "#E5C494", "Hyperscore" = "#66C2A5"),
+    name   = "Score Type"
+  ) +
+  theme_foundation(base_size = base_size, base_family = "sans") +
+  theme(
+    panel.grid.major  = element_blank(),
+    panel.grid.minor  = element_blank(),
+    panel.border      = element_blank(),
+    panel.background  = element_blank(),  
+    text              = element_text(colour = "black"),
+    plot.title        = element_text(face = "bold",
+                          size = rel((title_text_rel_size + base_size) / base_size), hjust = 0.5),
+    axis.line         = element_line(colour = "black", size = line_size),
+    axis.ticks        = element_line(colour = "black", size = line_size),
+    axis.title        = element_text(face = "bold", size = rel(1)),
+    axis.title.y      = element_text(angle = 90, vjust = 2),
+    axis.title.x      = element_text(vjust = -0.2),
+    axis.text         = element_text(face = "bold", colour = "black"),
+    legend.title      = element_text(face = "bold"),
+    legend.text       = element_text(size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+        legend.background = element_rect(fill = "white", colour = "grey80"),
+    plot.background   = element_blank(),
+    legend.position   = c(0.95, 0.6),
+    legend.justification = c(1, 1)
+  )
+p_roc
+
+
+```
+
+#Figure panel AETMA
+```{r}
+# 1. Define the Left Column: FDR curve on top of spacer (3:1 ratio)
+left_col <- p_fdr_curve / plot_spacer() + 
+  plot_layout(heights = c(5, 2))
+
+# 2. Define the Right Column: PSM bars (1:1 ratio)
+right_col <- p_psm_bar / p_psm_bar_unique
+
+# 3. Combine them side-by-side
+# You can also add widths = c(1, 1) if you want them to be equal width
+final_plot <- left_col | right_col
+
+p_score_dist_rescore
+p_score_dist_hyperscore
+p_roc 
+plot2<- p_roc + (p_score_dist_rescore / p_score_dist_hyperscore)
+ggsave("Figure_p_score_dist_AETMA.pdf", plot2, dpi = 600, width = 8, height =6, device = cairo_pdf)
+
+# Display
+final_plot
+ggsave("Figure_p_fdr_curve_AETMA.pdf", final_plot, dpi = 600, width = 7, height =4, device = cairo_pdf)
+```
+
+
+
+
+
+#biotin
+```{r}
+# ── Load data ─────────────────────────────────────────────────────────────────
+
+data_perc <- load_data("combined_mokapot_biotin.csv", group = "Hyperscore", protein_col = "Proteins") %>%
+  mutate(
+    PSM_Type  = ifelse(grepl("rev_", Proteins), "Decoy", "Target"),
+    Replicate = case_when(
+      grepl("SY65-1", source_file) ~ 1, grepl("SY65-2", source_file) ~ 2,
+      TRUE ~ NA_integer_
+    ),
+    Peptide = Peptide %>%
+      str_remove("^[A-Z-]\\.") %>% str_remove("\\d+\\.[A-Z-]$") %>%
+      str_remove_all("\\[.*?\\]") %>% str_remove("^n")
+  )
+
+data <- read.csv("rescoring_results_biotin_10ppm_final.csv")
+data$Group <- "Rescore"
+
+# ── Build plots — change "AGH" to any protein filter you want ─────────────────
+
+PROTEIN_FILTER <- "HUMAN"   # <-- only thing you need to change
+
+psm_long_all <- bind_rows(
+  summarise_psms(data,      protein_col = "Protein",  protein_filter = PROTEIN_FILTER),
+  summarise_psms(data_perc, protein_col = "Proteins", protein_filter = PROTEIN_FILTER)
+) %>% dplyr::rename(Score_Method = Group, FDR_Level = FDR)
+
+psm_long_unique <- bind_rows(
+  summarise_psms(data,      "Protein",  PROTEIN_FILTER, peptide_col = "Peptide"),
+  summarise_psms(data_perc, "Proteins", PROTEIN_FILTER, peptide_col = "Peptide")
+) %>% dplyr::rename(Score_Method = Group, FDR_Level = FDR)
+
+p_psm_bar        <- build_psm_plot(psm_long_all,    y_label = "Number of PSMs", title = "All PSMs")
+p_psm_bar_unique <- build_psm_plot(psm_long_unique, y_label = "Unique Peptides", title = "Unique Peptides")
+
+p_psm_bar
+p_psm_bar_unique
+# ── Generate plots ─────────────────────────────────────────────────────────────
+p_score_dist_rescore    <- make_qvalue_plot(data %>% filter(Group == "Rescore"),       "Rescore")
+p_score_dist_hyperscore <- make_qvalue_plot(data_perc %>% filter(Group == "Hyperscore"), "Hyperscore")
+
+p_score_dist_rescore
+p_score_dist_hyperscore
+
+
+# ── FDR Curve ─────────────────────────────────────────────────────────────────
+fdr_curve <- bind_rows(
+  data      %>% filter(PSM_Type == "Target") %>% arrange(mokapot_qvalue) %>%
+    mutate(cumulative_PSMs = row_number(), Source = "Rescore"),
+  data_perc %>% filter(PSM_Type == "Target") %>% arrange(mokapot_qvalue) %>%
+    mutate(cumulative_PSMs = row_number(), Source = "Hyperscore")
+)
+
+p_fdr_curve <- ggplot(fdr_curve, aes(x = mokapot_qvalue, y = cumulative_PSMs, colour = Source)) +
+  geom_line(linewidth = 1) +
+  geom_vline(xintercept = 0.01, linetype = "dashed", colour = "grey30", linewidth = 1.5) +
+  geom_vline(xintercept = 0.05, linetype = "dashed", colour = "red", linewidth = 1.5) +
+  annotate("text", x = 0.01, y = Inf, label = "1% FDR", hjust = -0.1, vjust = 2,
+           size = 4, colour = "grey30", fontface = "bold") +
+  annotate("text", x = 0.05, y = Inf, label = "5% FDR", hjust = -0.1, vjust = 2,
+           size = 4, colour = "red", fontface = "bold") +
+  scale_colour_manual(
+    values = c("Rescore" = "#E5C494", "Hyperscore" = "#66C2A5"),
+    name   = "Method"
+  ) +
+  scale_x_continuous(limits = c(0, 0.1), labels = scales::label_number()) +
+  scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.1)), limits = c(0,60000)) +
+  labs(x = "Q-value", y = "Cumulative Target PSMs", title = "Cumulative Target PSMs") +
+  theme_foundation(base_size = base_size, base_family = "sans") +
+  theme(
+    panel.grid.major     = element_blank(),
+    panel.grid.minor     = element_blank(),
+    panel.border         = element_blank(),
+    panel.background     = element_blank(),
+          plot.title      = element_text(face = "bold",
+                                     size = rel(1.2), hjust = 0.5),
+    text                 = element_text(colour = "black"),
+    axis.line            = element_line(colour = "black", size = line_size),
+    axis.ticks           = element_line(colour = "black", size = line_size),
+    axis.title           = element_text(face = "bold", size = rel(1)),
+    axis.title.y         = element_text(angle = 90, vjust = 2),
+    axis.title.x         = element_text(vjust = -0.2),
+    axis.text            = element_text(face = "bold", colour = "black"),
+    legend.title         = element_text(face = "bold"),
+    legend.text          = element_text(colour = "black"),
+    legend.background    = element_rect(fill = "white", colour = "grey80"),
+    plot.background      = element_blank(),
+    legend.position      = c(0.85, 0.30),
+    legend.justification = c(0, 1)
+  )
+
+p_fdr_curve
+```
+
+
+#roc bition
+```{r}
+data <- read.csv("rescoring_results_biotin_10ppm_final.csv")
+data$Group <- "Rescore"
+
+# ── Parameters ──────────────────────────────────────────────────────────────
+base_size          <- 12
+axis_text_rel_size <- 2
+title_text_rel_size <- 2
+line_size          <- 0.5
+
+# ── 1. Summary ──────────────────────────────────────────────────────────────
+summary_table <- data %>%
+  group_by(PSM_Type) %>%
+  dplyr::summarise(
+    n = n(),
+    across(c(Rescore, Hyperscore),
+           list(
+             mean   = ~mean(.x, na.rm = TRUE),
+             median = ~median(.x, na.rm = TRUE),
+             sd     = ~sd(.x, na.rm = TRUE),
+             min    = ~min(.x, na.rm = TRUE),
+             max    = ~max(.x, na.rm = TRUE)
+           ),
+           .names = "{.col}_{.fn}"
+    ),
+    .groups = "drop"
+  )
+
+print(summary_table)
+
+
+# ── Separation ──────────────────────────────────────────────────────────────
+separation <- summary_table %>%
+  dplyr::summarise(
+    Rescore_median_diff =
+      Rescore_median[PSM_Type=="Target"] - Rescore_median[PSM_Type=="Decoy"],
+    Hyperscore_median_diff =
+      Hyperscore_median[PSM_Type=="Target"] - Hyperscore_median[PSM_Type=="Decoy"],
+
+    Rescore_mean_diff =
+      Rescore_mean[PSM_Type=="Target"] - Rescore_mean[PSM_Type=="Decoy"],
+    Hyperscore_mean_diff =
+      Hyperscore_mean[PSM_Type=="Target"] - Hyperscore_mean[PSM_Type=="Decoy"]
+  )
+
+print(separation)
+
+# ── AUCs ────────────────────────────────────────────────────────────────────
+auc_rescore <- roc(data$PSM_Type, data$Rescore,
+                   levels=c("Decoy","Target"), direction="<")$auc
+
+auc_hyperscore <- roc(data$PSM_Type, data$Hyperscore,
+                      levels=c("Decoy","Target"), direction="<")$auc
+
+
+# ── ROC curves ──────────────────────────────────────────────────────────────
+roc_rescore <- roc(data$PSM_Type, data$Rescore, levels=c("Decoy","Target"))
+roc_hyper   <- roc(data$PSM_Type, data$Hyperscore, levels=c("Decoy","Target"))
+
+
+roc_df <- bind_rows(
+  data.frame(TPR=roc_rescore$sensitivities,
+             FPR=1-roc_rescore$specificities,
+             Score="Rescore"),
+
+  data.frame(TPR=roc_hyper$sensitivities,
+             FPR=1-roc_hyper$specificities,
+             Score="Hyperscore")
+)
+
+p_roc <- ggplot(roc_df, aes(FPR, TPR, colour=Score)) +
+  geom_line(size=1) +
+  geom_abline(linetype="dashed") +
+  labs(title="ROC Curve", x="False Positive Rate", y="True Positive Rate") +
+  annotate("text", x=0.6, y=0.2,
+           label=paste0(
+             "Rescore = ", round(auc_rescore,3),
+             "\nHyperscore = ", round(auc_hyperscore,3)
+           )) +
+    scale_colour_manual(
+    values = c("Rescore" = "#E5C494", "Hyperscore" = "#66C2A5"),
+    name   = "Score Type"
+  ) +
+  theme_foundation(base_size = base_size, base_family = "sans") +
+  theme(
+    panel.grid.major  = element_blank(),
+    panel.grid.minor  = element_blank(),
+    panel.border      = element_blank(),
+    panel.background  = element_blank(),  
+    text              = element_text(colour = "black"),
+    plot.title        = element_text(face = "bold",
+                          size = rel((title_text_rel_size + base_size) / base_size), hjust = 0.5),
+    axis.line         = element_line(colour = "black", size = line_size),
+    axis.ticks        = element_line(colour = "black", size = line_size),
+    axis.title        = element_text(face = "bold", size = rel(1)),
+    axis.title.y      = element_text(angle = 90, vjust = 2),
+    axis.title.x      = element_text(vjust = -0.2),
+    axis.text         = element_text(face = "bold", colour = "black"),
+    legend.title      = element_text(face = "bold"),
+    legend.text       = element_text(size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+        legend.background = element_rect(fill = "white", colour = "grey80"),
+    plot.background   = element_blank(),
+    legend.position   = c(0.95, 0.99),
+    legend.justification = c(1, 1)
+  )
+p_roc
+
+```
+
+
+
+
+
+
+#Figure panel biotin
+```{r}
+
+Sup_plot <- p_roc/plot_spacer()  | p_score_dist_rescore/p_score_dist_hyperscore | p_fdr_curve/p_psm_bar
+Sup_plot
+
+ggsave("Figure_biotin.pdf", Sup_plot, dpi = 600, width = 12, height =7, device = cairo_pdf)
+
+
+```
+
+
+
+
+
+#Supplementary data - Bitoinylated peptide ion intensity distribution
+```{r}
+data <- read.csv(file = "Figure_6_cystein_rescore/rescoring_results.csv", header = TRUE)
+graph_data <- data %>%
+  filter(!grepl("Reverse", Protein)) %>%
+  filter(
+    grepl("463.23657", Parsed.Modifications)
+  ) 
+
+write.xlsx(graph_data, "Table_1_matched_ion_intensity_for_singly_labelled_AETMA_peptides.xlsx", overwrite = TRUE)
+
+nrow(graph_data) # 122 peptides
+
+#Intensity pie chart
+intensity_cols <- c("b.matched.intensity", "y.matched.intensity", "a.matched.intensity",
+                    "ModNL1.y.matched.intensity", "ModNL1.b.matched.intensity", "ModNL1.a.matched.intensity", "ModRM1.y.matched.intensity", "ModRM1.b.matched.intensity", "ModRM1.a.matched.intensity",
+                     "ModRM1.MH.matched.intensity", "ModNL1.MH.matched.intensity", "MH.matched.intensity")
+
+# Parse comma-separated intensity strings → row-wise sum
+df_intensity <- graph_data %>%
+  select(Peptide,Replicate, all_of(intensity_cols)) %>%
+  mutate(across(
+    all_of(intensity_cols),
+    ~ sapply(.x, function(val) {
+      if (is.na(val) || val == "" || val == "0") return(0)
+      sum(as.numeric(strsplit(as.character(val), ",")[[1]]), na.rm = TRUE)
+    })
+  ))
+
+# Pivot to long, mirror the same labelling logic as ion_long
+intensity_long <- df_intensity %>%
+  pivot_longer(all_of(intensity_cols), names_to = "ion_type", values_to = "intensity") %>%
+  mutate(
+    ion_type_clean = str_remove(ion_type, "\\.matched\\.intensity"),
+    ion_base = case_when(
+      str_ends(ion_type_clean, "b") ~ "b",
+      str_ends(ion_type_clean, "y") ~ "y",
+      str_ends(ion_type_clean, "a") ~ "a",
+      str_ends(ion_type_clean, "MH") ~ "MH",
+    ),
+    is_neutral = str_starts(ion_type, "ModNL"),
+    is_remainder = str_starts(ion_type, "ModRM"),
+    ion_label = case_when(
+      is_neutral ~ paste0("Remainder (+152.095 Da)"),
+      is_remainder ~ paste0("Remainder (+180.101 Da)"),
+      TRUE      ~ paste0("Intact Biotin")
+    )
+  )
+
+# Sum intensities per peptide/group/replicate, then aggregate to mean across peptides
+p_A2_data <- intensity_long %>%
+  group_by(ion_base, ion_label, Replicate) %>%
+  dplyr::summarise(sum_intensity = sum(intensity, na.rm = TRUE), .groups = "drop") %>%
+  group_by(ion_base, ion_label) %>%
+  dplyr::summarise(mean_intensity = mean(sum_intensity, na.rm = TRUE), .groups = "drop") %>%
+  group_by(ion_base) %>%        # <-- removed Group (not a column at this point)
+  mutate(
+    total     = sum(mean_intensity),
+    pct       = mean_intensity / total * 100,
+    pct_label = ifelse(pct >= 5, sprintf("%.1f%%", pct), "")
+  ) %>%
+  ungroup() %>%
+  mutate(                        # <-- added mutate( here
+    ion_label = factor(ion_label, levels = c("Remainder (+152.095 Da)","Remainder (+180.101 Da)", "Intact Biotin"))
+  )    
+
+
+# Plot — pie charts faceted by ion_base
+p_A2 <- p_A2_data %>%
+  ggplot(aes(x = "", y = pct, fill = ion_label)) +
+  geom_bar(stat = "identity", width = 1, colour = "black", linewidth = 0.3) +
+  geom_text(
+    aes(label = pct_label),
+    position = position_stack(vjust = 0.5),
+    size = 3, fontface = "bold", colour = "black"
+  ) +
+  coord_polar(theta = "y") +
+  scale_fill_brewer(palette = "Set2", name = "Ion type") +
+  facet_wrap(~ion_base, ncol = 2,
+             labeller = labeller(ion_base = c(b = "b-ions", y = "y-ions",
+                                             a = "a-ions" , MH = "MH"))) +
+  labs(
+    title = "Relative Ion Intensity (%) of \n biotinylated peptides",
+    x     = NULL,
+    y     = NULL
+  ) +
+  theme_foundation(base_size = base_size, base_family = "sans") +
+  theme(
+    panel.grid.major  = element_blank(),
+    panel.grid.minor  = element_blank(),
+    panel.border      = element_blank(),
+    panel.background  = element_blank(),
+    text              = element_text(colour = "black"),
+    plot.title        = element_text(face = "bold",
+                          size = rel((title_text_rel_size + base_size) / base_size), hjust = 0.5),
+    axis.line         = element_blank(),       # no axes on a pie
+    axis.ticks        = element_blank(),
+    axis.text         = element_blank(),       # hide angle labels
+    plot.background   = element_blank(),
+    strip.text        = element_text(face = "bold",
+                          size = rel((title_text_rel_size + base_size) / base_size), colour = "black"),
+    strip.background  = element_blank(),
+    legend.text       = element_text(size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+    legend.title      = element_text(face = "bold",
+                          size = rel((axis_text_rel_size + base_size) / base_size)),
+    legend.position        = "bottom",         # bottom works better for pies
+    legend.background      = element_rect(fill = "white", colour = "grey80")
+  )
+p_A2
+
+ggsave("Figure_2B_Bio_ion_intenstities_fragmentation.pdf",  p_A2, dpi = 600, width =14, height = 14,units="cm",device = cairo_pdf)
+
+```
+
+
+
+
+```{r}
+# ── 1. Calculate Replicate-Level Averages & % Difference ─────────────────────
+replicate_summary <- data %>%
+  group_by(Replicate, PSM_Type) %>%
+  dplyr::summarise(
+    avg_hyperscore = mean(Hyperscore, na.rm = TRUE),
+    avg_rescore    = mean(Rescore, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    # Percentage Difference Formula: ((New - Old) / Old) * 100
+    pct_diff = ((avg_rescore - avg_hyperscore) / avg_hyperscore) * 100
+  )
+
+# Calculate the overall mean improvement for the plot subtitle
+mean_pct_gain <- mean(replicate_summary$pct_diff, na.rm = TRUE)
+
+# ── 2. Reshape for Box Plot ──────────────────────────────────────────────────
+plot_data_rep <- replicate_summary %>%
+  pivot_longer(
+    cols = c(avg_hyperscore, avg_rescore),
+    names_to = "Score_Type",
+    values_to = "Mean_Value"
+  ) %>%
+  mutate(Score_Type = factor(Score_Type, 
+                             levels = c("avg_hyperscore", "avg_rescore"),
+                             labels = c("Hyperscore", "Rescore")))
+
+
+pct_labels <- replicate_summary %>%
+  group_by(PSM_Type) %>%
+  dplyr::summarise(
+    # Find the average gain for this specific group (Target or Decoy)
+    avg_pct = mean(pct_diff, na.rm = TRUE),
+    # Position the text above the highest data point in the facet
+    y_pos = max(avg_rescore, avg_hyperscore, na.rm = TRUE) * 1.1,
+    .groups = "drop"
+  )
+
+# ── 3. Create the Box Plot ───────────────────────────────────────────────────
+p_rep_box <- ggplot(plot_data_rep, aes(x = Score_Type, y = Mean_Value, fill = Score_Type)) +
+  geom_boxplot(width = 0.5, alpha = 0.7, outlier.shape = NA) +
+  geom_jitter(width = 0.1, size = 2, alpha = 0.6) +
+  
+  # ADDED: Text labels for percentage difference inside each facet
+  geom_text(
+    data = pct_labels,
+    aes(x = 1.5, y = y_pos, label = paste0("+", round(avg_pct, 1), "%")),
+    inherit.aes = FALSE, # Prevent it from trying to use Score_Type for fill
+    fontface = "bold",
+    size = 5,
+    color = "darkblue"
+  ) +
+  
+  scale_fill_manual(values = c("Hyperscore" = "#4472C4", "Rescore" = "#E87B3E")) +
+  labs(
+    title = "Average Score Distribution by Replicate",
+    subtitle = "Percentage values indicate mean gain from Rescoring",
+    x = NULL,
+    y = "Mean Score Value"
+  ) +
+  facet_wrap(~ PSM_Type, ncol = 2) +
+  # Adjust y-axis slightly to make room for the label
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.2))) + 
+  theme_foundation(base_size = base_size) + 
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(face = "bold", size = rel(1.2)),
+    strip.text = element_text(face = "bold", size = rel(1.1)),
+    plot.subtitle = element_text(face = "italic", color = "grey40", hjust = 0.5)
+  )
+
+print(p_rep_box)
+```
+
+```{r}
+data <- read.csv(file = "rescoring_results_5ppm.csv", header = TRUE)
+
+get_q_curve_data <- function(df, score_col, label_name, Protein_filter = "AGH") {
+  df %>%
+    dplyr::arrange(desc(.data[[score_col]])) %>%
+    mutate(
+      is_decoy   = PSM_Type == "Decoy",
+      is_target  = PSM_Type == "Target",
+      cum_decoy  = cumsum(is_decoy),
+      cum_target = cumsum(is_target),
+      # Using your specific 1.7 factor
+      raw_FDR    = (cum_decoy + 1) / (cum_target)
+    ) %>%
+    mutate(q_value = rev(cummin(rev(raw_FDR)))) %>%
+    # Filter for Targets and your specific Protein filter
+    filter(PSM_Type == "Target", grepl(Protein_filter, Protein)) %>%
+    # We only need the Q-value and the cumulative count
+    mutate(PSM_Count = row_number(),
+           Method = label_name) %>%
+    dplyr::select(q_value, PSM_Count, Method)
+}
+
+# ── 1. Generate the data points ─────────────────────────────────────────────
+curve_hyperscore <- get_q_curve_data(data, "Hyperscore", "Hyperscore")
+curve_rescore    <- get_q_curve_data(data, "Rescore", "Rescore")
+curve_morpheus    <- get_q_curve_data(data, "Morpheus_Score", "Morpheus_Score")
+curve_length    <- get_q_curve_data(data, "Length_Dependent_Normalized_Score", "Length_Dependent_Normalized_Score")
+
+# Combine for plotting
+plot_q_data <- bind_rows(curve_hyperscore, curve_rescore,curve_morpheus, curve_length)
+
+# ── 2. Create the Plot ──────────────────────────────────────────────────────
+p_q_curve <- ggplot(plot_q_data, aes(x = q_value, y = PSM_Count, color = Method)) +
+  geom_line(linewidth = 1.2) +
+  # Typically we focus on the 0% to 5% FDR range
+  coord_cartesian(xlim = c(0, 0.05)) + 
+  # Add a vertical line at the standard 1% FDR mark
+  geom_vline(xintercept = 0.01, linetype = "dashed", color = "grey50") +
+  annotate("text", x = 0.011, y = max(plot_q_data$PSM_Count)*0.1, 
+           label = "1% FDR", angle = 90, vjust = -0.5, color = "grey50") +
+  labs(
+    title = "Q-value Curve",
+    x = "Q-value (FDR Threshold)",
+    y = "Number of Target PSMs"
+  ) +
+  theme_foundation(base_size = base_size, base_family = "sans") +
+  theme(
+    panel.grid.major  = element_blank(),
+    panel.grid.minor  = element_blank(),
+    panel.border      = element_blank(),
+    panel.background  = element_blank(),
+    text              = element_text(colour = "black"),
+    plot.title        = element_text(face = "bold",
+                          size = rel((title_text_rel_size + base_size) / base_size), hjust = 0.5),
+    axis.line         = element_line(colour = "black", size = line_size),
+    axis.ticks        = element_line(colour = "black", size = line_size),
+    axis.title        = element_text(face = "bold", size = rel(1)),
+    axis.title.y      = element_text(angle = 90, vjust = 2),
+    axis.title.x      = element_text(vjust = -0.2),
+    axis.text         = element_text(face = "bold", colour = "black"),
+    legend.title      = element_text(face = "bold"),
+    legend.text       = element_text(size = rel((axis_text_rel_size + base_size) / base_size), colour = "black"),
+        legend.background = element_rect(fill = "white", colour = "grey80"),
+    plot.background   = element_blank(),
+    legend.position   = c(0.95, 0.99),
+    legend.justification = c(1, 1)
+  )
+print(p_q_curve)
+
+
+
+
+
+```
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+# ── ECDF ────────────────────────────────────────────────────────────────────
+plot_data <- data %>%
+  dplyr::select(PSM_Type, Rescore, Hyperscore) %>%
+  pivot_longer(-PSM_Type, names_to="Score_Type", values_to="Score")
+
+ggplot(plot_data, aes(Score, colour=PSM_Type)) +
+  stat_ecdf(size=1) +
+  facet_wrap(~Score_Type, scales="free") +
+  theme_foundation(base_size=base_size)
+
+data_perc <- data_perc %>%
+  filter(FDR == "5% FDR") 
+
+data_moka <- data %>%
+  filter(mokapot_qvalue < 0.05) 
+
+plot_data <- bind_rows(
+  data_perc %>% arrange(Qvalue) %>% mutate(PSMs = row_number(), Source = "Percolator"),
+  data_moka      %>% arrange(mokapot_qvalue) %>% mutate(PSMs = row_number(), Source = "Standard")
+) %>%
+  dplyr::rename(qvalue_unified = ifelse("Qvalue" %in% names(.), "Qvalue", "mokapot_qvalue"))
+
+# Plot
+ggplot(plot_data, aes(x = qvalue_unified, y = PSMs, colour = Source)) +
+  geom_line(linewidth = 1) +
+  scale_x_continuous(limits = c(0, 0.05), breaks = seq(0, 0.05, 0.01)) +
+  labs(
+    title  = "FDR Curve",
+    x      = "Q-value",
+    y      = "Cumulative PSMs",
+    colour = "Source"
+  ) +
+  theme_bw()
+```
+
+
+
+

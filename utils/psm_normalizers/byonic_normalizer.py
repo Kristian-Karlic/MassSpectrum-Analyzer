@@ -1,6 +1,5 @@
 import re
 import csv
-import io
 import pandas as pd
 from .base_normalizer import PSMNormalizer
 
@@ -14,13 +13,13 @@ class ByonicNormalizer(PSMNormalizer):
     """
 
     # Pre-compiled regex patterns for performance
-    _SCAN_NUMBER_PATTERN = re.compile(r'scan\s*=\s*(\d+)')
-    _SEQUENCE_FORMAT_PATTERN = re.compile(r'^([A-Z-])\.(.+)\.([A-Z-])$')
-    _BRACKET_PATTERN = re.compile(r'\[[^\]]+\]')
+    _SCAN_NUMBER_PATTERN = re.compile(r"scan\s*=\s*(\d+)")
+    _SEQUENCE_FORMAT_PATTERN = re.compile(r"^([A-Z-])\.(.+)\.([A-Z-])$")
+    _BRACKET_PATTERN = re.compile(r"\[[^\]]+\]")
     _FILE_PATTERN = re.compile(r'File:"([^"]+)"')
-    _FALLBACK_FILENAME_PATTERN = re.compile(r'([^\.]+)')
-    _MOD_PATTERN = re.compile(r'([A-Z])(\d+)\(([^/]+)\s*/\s*([\d.]+)\)')
-    _SIMPLE_SCAN_NUMBER_PATTERN = re.compile(r'^\d+$')
+    _FALLBACK_FILENAME_PATTERN = re.compile(r"([^\.]+)")
+    _MOD_PATTERN = re.compile(r"([A-Z])(\d+)\(([^/]+)\s*/\s*([\d.]+)\)")
+    _SIMPLE_SCAN_NUMBER_PATTERN = re.compile(r"^\d+$")
 
     def __init__(self, mod_database=None):
         self.mod_database = mod_database
@@ -34,7 +33,12 @@ class ByonicNormalizer(PSMNormalizer):
     @staticmethod
     def _normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
         """Normalize column names by removing/replacing newlines and collapsing whitespace."""
-        df.columns = [re.sub(r'\s+', ' ', (col or '').replace('\n', ' ').replace('\r', ' ')).strip() for col in df.columns]
+        df.columns = [
+            re.sub(
+                r"\s+", " ", (col or "").replace("\n", " ").replace("\r", " ")
+            ).strip()
+            for col in df.columns
+        ]
         return df
 
     @staticmethod
@@ -45,7 +49,7 @@ class ByonicNormalizer(PSMNormalizer):
         Returns:
             pd.DataFrame with normalized column names
         """
-        with open(file_path, 'r', encoding='utf-8', newline='') as f:
+        with open(file_path, "r", encoding="utf-8", newline="") as f:
             # Use csv.DictReader which properly handles quoted fields with newlines
             reader = csv.DictReader(f)
             rows = list(reader)
@@ -66,18 +70,24 @@ class ByonicNormalizer(PSMNormalizer):
         result = df.copy()
 
         # Parse sequence format: K.TVVTEAGNLLKDN[+1054.37004]ATQEEILHYLEK.T
-        parsed_sequences = df["Sequence (unformatted)"].apply(self._parse_sequence_format)
+        parsed_sequences = df["Sequence (unformatted)"].apply(
+            self._parse_sequence_format
+        )
 
-        result["Peptide"] = parsed_sequences.apply(lambda x: x['unmodified'])
-        result["Modified Peptide"] = parsed_sequences.apply(lambda x: x['modified'])
-        result["Prev AA"] = parsed_sequences.apply(lambda x: x['prev_aa'])
-        result["Next AA"] = parsed_sequences.apply(lambda x: x['next_aa'])
+        result["Peptide"] = parsed_sequences.apply(lambda x: x["unmodified"])
+        result["Modified Peptide"] = parsed_sequences.apply(lambda x: x["modified"])
+        result["Prev AA"] = parsed_sequences.apply(lambda x: x["prev_aa"])
+        result["Next AA"] = parsed_sequences.apply(lambda x: x["next_aa"])
 
         result["Charge"] = pd.to_numeric(df["z"], errors="coerce").fillna(0).astype(int)
-        result["Observed M/Z"] = pd.to_numeric(df["Obs. m/z"], errors="coerce").fillna(0.0)
+        result["Observed M/Z"] = pd.to_numeric(df["Obs. m/z"], errors="coerce").fillna(
+            0.0
+        )
         result["Hyperscore"] = pd.to_numeric(df["Score"], errors="coerce").fillna(0.0)
         result["Protein"] = df["Protein Name"].fillna("")
-        result["Peptide Length"] = pd.to_numeric(df["Pos."], errors="coerce").fillna(0).astype(int)
+        result["Peptide Length"] = (
+            pd.to_numeric(df["Pos."], errors="coerce").fillna(0).astype(int)
+        )
         result["Spectrum file"] = df["Comment"].apply(self._extract_raw_filename)
         result["index"] = df["Scan #"].apply(self._extract_scan_number)
 
@@ -88,10 +98,9 @@ class ByonicNormalizer(PSMNormalizer):
         # Combine variable and fixed modifications
         result["Assigned Modifications"] = df.apply(
             lambda row: self._combine_modifications(
-                row.get("Mods (variable)", ""),
-                row.get("Mods (fixed)", "")
+                row.get("Mods (variable)", ""), row.get("Mods (fixed)", "")
             ),
-            axis=1
+            axis=1,
         )
 
         # Parse modifications - pass the combined string directly
@@ -115,12 +124,7 @@ class ByonicNormalizer(PSMNormalizer):
             - next_aa: amino acid after the final period
         """
         if pd.isna(seq_str):
-            return {
-                'prev_aa': '',
-                'modified': '',
-                'unmodified': '',
-                'next_aa': ''
-            }
+            return {"prev_aa": "", "modified": "", "unmodified": "", "next_aa": ""}
 
         seq = str(seq_str).strip()
 
@@ -133,25 +137,25 @@ class ByonicNormalizer(PSMNormalizer):
             next_aa = match.group(3)
 
             # Convert dash to empty string (dash indicates start/end of protein)
-            prev_aa = '' if prev_aa == '-' else prev_aa
-            next_aa = '' if next_aa == '-' else next_aa
+            prev_aa = "" if prev_aa == "-" else prev_aa
+            next_aa = "" if next_aa == "-" else next_aa
 
             # Remove in-bracket modifications for unmodified sequence
-            unmodified = ByonicNormalizer._BRACKET_PATTERN.sub('', peptide_with_mods)
+            unmodified = ByonicNormalizer._BRACKET_PATTERN.sub("", peptide_with_mods)
 
             return {
-                'prev_aa': prev_aa,
-                'modified': peptide_with_mods,
-                'unmodified': unmodified,
-                'next_aa': next_aa
+                "prev_aa": prev_aa,
+                "modified": peptide_with_mods,
+                "unmodified": unmodified,
+                "next_aa": next_aa,
             }
 
         # Fallback for sequences without flanking AAs
         return {
-            'prev_aa': '',
-            'modified': seq,
-            'unmodified': ByonicNormalizer._BRACKET_PATTERN.sub('', seq),
-            'next_aa': ''
+            "prev_aa": "",
+            "modified": seq,
+            "unmodified": ByonicNormalizer._BRACKET_PATTERN.sub("", seq),
+            "next_aa": "",
         }
 
     @staticmethod
@@ -186,7 +190,7 @@ class ByonicNormalizer(PSMNormalizer):
         if match:
             file_path = match.group(1)
             # Get the basename
-            return file_path.split('/')[-1].split('\\')[-1]
+            return file_path.split("/")[-1].split("\\")[-1]
 
         # Fallback: try to extract from the beginning before scan details
         match = ByonicNormalizer._FALLBACK_FILENAME_PATTERN.match(comment)
@@ -215,7 +219,7 @@ class ByonicNormalizer(PSMNormalizer):
         scan_str = str(scan_value).strip()
 
         # Check if it contains the key-value format
-        if '=' in scan_str:
+        if "=" in scan_str:
             # Extract scan number from key-value format
             match = ByonicNormalizer._SCAN_NUMBER_PATTERN.search(scan_str)
             if match:
@@ -245,9 +249,7 @@ class ByonicNormalizer(PSMNormalizer):
         modifications = []
 
         for match in self._MOD_PATTERN.finditer(mod_str):
-            aa = match.group(1)
             position = int(match.group(2))
-            mod_name = match.group(3).strip()
             mass_str = match.group(4).strip()
 
             try:
@@ -305,7 +307,7 @@ class ByonicNormalizer(PSMNormalizer):
                     spec_lower = base.lower()
                     spectrum_files.add(spec_lower)
                     # Also add without extension
-                    if spec_lower.endswith('.raw'):
+                    if spec_lower.endswith(".raw"):
                         spectrum_files.add(spec_lower[:-4])
 
         # Also try extracting from Comment if Spectrum file wasn't available
@@ -315,7 +317,7 @@ class ByonicNormalizer(PSMNormalizer):
                 if filename and str(filename).strip():
                     spec_lower = str(filename).lower().strip()
                     spectrum_files.add(spec_lower)
-                    if spec_lower.endswith('.raw'):
+                    if spec_lower.endswith(".raw"):
                         spectrum_files.add(spec_lower[:-4])
 
         return spectrum_files

@@ -2,6 +2,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class WindowSizeManager:
     """Utility class for managing application window sizing and presets"""
 
@@ -21,18 +22,19 @@ class WindowSizeManager:
             return
 
         size = LayoutConstants.WINDOW_PRESETS[preset_name]
-        window.resize(size['width'], size['height'])
+        window.resize(size["width"], size["height"])
 
         # Center the window on screen
         WindowSizeManager.center_window(window)
 
-        logger.debug(f"[Window] Applied '{preset_name}' preset: {size['width']}x{size['height']}")
+        logger.debug(
+            f"[Window] Applied '{preset_name}' preset: {size['width']}x{size['height']}"
+        )
 
     @staticmethod
     def center_window(window):
         """Center the window on the primary screen"""
         from PyQt6.QtGui import QGuiApplication
-        from PyQt6.QtCore import Qt
 
         screen = QGuiApplication.primaryScreen().geometry()
         window_geo = window.geometry()
@@ -61,7 +63,7 @@ class WindowSizeManager:
 
         settings = QSettings("YourCompany", "MassSpecAnalyzer")
         settings.setValue(settings_key, window.saveGeometry())
-        logger.debug(f"[Window] Saved geometry to settings")
+        logger.debug("[Window] Saved geometry to settings")
 
     @staticmethod
     def restore_geometry(window, settings_key="window_geometry"):
@@ -82,7 +84,7 @@ class WindowSizeManager:
 
         if geometry:
             window.restoreGeometry(geometry)
-            logger.debug(f"[Window] Restored geometry from settings")
+            logger.debug("[Window] Restored geometry from settings")
             return True
         return False
 
@@ -90,12 +92,14 @@ class WindowSizeManager:
     def get_available_presets():
         """Get list of available preset names"""
         from utils.style.GUI_dimensions import LayoutConstants
+
         return list(LayoutConstants.WINDOW_PRESETS.keys())
 
     @staticmethod
     def get_preset_info(preset_name: str):
         """Get information about a specific preset"""
         from utils.style.GUI_dimensions import LayoutConstants
+
         if preset_name in LayoutConstants.WINDOW_PRESETS:
             size = LayoutConstants.WINDOW_PRESETS[preset_name]
             return f"{size['width']}x{size['height']}"

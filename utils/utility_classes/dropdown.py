@@ -1,17 +1,27 @@
 from PyQt6.QtCore import pyqtSignal, QEvent, QCoreApplication, QPoint
 from PyQt6.QtGui import QKeyEvent
 
-from PyQt6.QtWidgets import (QWidget, QHBoxLayout,QLineEdit,  QSizePolicy, QToolButton, QListWidget, QListWidgetItem, QApplication
+from PyQt6.QtWidgets import (
+    QWidget,
+    QHBoxLayout,
+    QLineEdit,
+    QSizePolicy,
+    QToolButton,
+    QListWidget,
+    QListWidgetItem,
+    QApplication,
 )
 from PyQt6.QtCore import Qt
 import logging
 
 logger = logging.getLogger(__name__)
 
+
 class SearchableDropdown(QWidget):
     """A small widget: QLineEdit + popup QListWidget that supports typing to filter and clicking to select.
     Popup closes when user clicks anywhere outside it (including other GUI widgets or the down-arrow button).
     """
+
     item_selected = pyqtSignal(object)  # emits the item data (any python object)
 
     def __init__(self, placeholder: str = ""):
@@ -32,7 +42,9 @@ class SearchableDropdown(QWidget):
         # Popup list
         self.popup = QListWidget()
         # Make it a popup window but avoid stealing focus from the line edit
-        self.popup.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        self.popup.setWindowFlags(
+            Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
+        )
         self.popup.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         # Show popup without activating window so the line edit keeps keyboard focus
         self.popup.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
@@ -60,13 +72,20 @@ class SearchableDropdown(QWidget):
         if obj is self.popup and event.type() == QEvent.Type.KeyPress:
             text = event.text()
             forwarding_keys = {
-                Qt.Key.Key_Backspace, Qt.Key.Key_Delete,
-                Qt.Key.Key_Left, Qt.Key.Key_Right,
-                Qt.Key.Key_Home, Qt.Key.Key_End, Qt.Key.Key_Tab,
-                Qt.Key.Key_Return, Qt.Key.Key_Enter
+                Qt.Key.Key_Backspace,
+                Qt.Key.Key_Delete,
+                Qt.Key.Key_Left,
+                Qt.Key.Key_Right,
+                Qt.Key.Key_Home,
+                Qt.Key.Key_End,
+                Qt.Key.Key_Tab,
+                Qt.Key.Key_Return,
+                Qt.Key.Key_Enter,
             }
             if text or event.key() in forwarding_keys:
-                evt = QKeyEvent(event.type(), event.key(), event.modifiers(), event.text())
+                evt = QKeyEvent(
+                    event.type(), event.key(), event.modifiers(), event.text()
+                )
                 QCoreApplication.postEvent(self.line, evt)
                 return True
 
@@ -107,7 +126,7 @@ class SearchableDropdown(QWidget):
         """Clear all items from the dropdown - FIXED to work with existing structure"""
         try:
             self._items.clear()  # Clear the correct attribute
-            self.popup.clear()   # Clear the popup
+            self.popup.clear()  # Clear the popup
             logger.debug("SearchableDropdown cleared")
         except Exception as e:
             logger.error(f"Failed to clear SearchableDropdown items: {e}")

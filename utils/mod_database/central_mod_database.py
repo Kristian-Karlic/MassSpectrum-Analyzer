@@ -28,7 +28,11 @@ class CentralModificationDatabase:
         "neutral_losses": "",
         "remainder_ions": "",
         "labile_loss": False,
+        "is_glycan": False,
     }
+
+    # Modification names that are always treated as glycan modifications
+    _KNOWN_GLYCAN_NAMES = {"HexNAc", "Hex", "dHex", "NeuAc", "NeuGc", "Pent"}
 
     # Seed data – used only when no JSON *and* no CSV exist.
     DEFAULT_MODIFICATIONS = {
@@ -40,11 +44,16 @@ class CentralModificationDatabase:
         "Methylation": {"mass": 14.0157},
         "Dimethylation": {"mass": 28.0313},
         "Trimethylation": {"mass": 42.0470},
-        "HexNAc": {"mass": 203.0794},
-        "Hex": {"mass": 162.0528},
-        "dHex": {"mass": 146.0579},
-        "NeuAc": {"mass": 291.0954},
-        "NeuGc": {"mass": 307.0903},
+        "HexNAc": {
+            "mass": 203.0794,
+            "labile_loss": True,
+            "remainder_ions": "203.0794",
+            "is_glycan": True,
+        },
+        "Hex": {"mass": 162.0528, "labile_loss": True, "is_glycan": True},
+        "Fuc": {"mass": 146.0579, "labile_loss": True, "is_glycan": True},
+        "NeuAc": {"mass": 291.0954, "labile_loss": True, "is_glycan": True},
+        "NeuGc": {"mass": 307.0903, "labile_loss": True, "is_glycan": True},
         "Sulfo": {"mass": 79.9568},
         "No Modification": {"mass": 0.0},
     }
@@ -91,9 +100,24 @@ class CentralModificationDatabase:
                     entry = self._migrate_entry(entry)
                     migrated = True
                 self.mods[name] = entry
-            if migrated:
+            # Mark known glycan names if the flag is missing
+            glycan_migrated = False
+            for name, entry in self.mods.items():
+                if name in self._KNOWN_GLYCAN_NAMES and not entry.get(
+                    "is_glycan", False
+                ):
+                    entry["is_glycan"] = True
+                    glycan_migrated = True
+            if migrated or glycan_migrated:
                 self._save()
-                logger.debug(f"Migrated {len(self.mods)} entries to new NL/RM format")
+                if migrated:
+                    logger.debug(
+                        f"Migrated {len(self.mods)} entries to new NL/RM format"
+                    )
+                if glycan_migrated:
+                    logger.debug(
+                        "Flagged known glycan modifications with is_glycan=True"
+                    )
         elif self._csv_fallback_path and os.path.exists(self._csv_fallback_path):
             # Migrate from legacy modifications_list.csv
             self._migrate_from_csv(self._csv_fallback_path)
@@ -111,12 +135,17 @@ class CentralModificationDatabase:
         try:
             df = pd.read_csv(csv_path)
             self.mods = {}
-            for _, row in df.iterrows():
-                name = str(row.get("Name", "")).strip()
+            col_idx = {col: pos for pos, col in enumerate(df.columns, start=1)}
+            idx_name = col_idx.get("Name")
+            idx_mass = col_idx.get("Mass")
+            for row_tuple in df.itertuples(index=False, name=None):
+                name = (
+                    str(row_tuple[idx_name - 1]).strip() if idx_name is not None else ""
+                )
                 if not name:
                     continue
                 try:
-                    mass = float(row.get("Mass", 0))
+                    mass = float(row_tuple[idx_mass - 1]) if idx_mass is not None else 0
                 except (ValueError, TypeError):
                     continue
                 self.mods[name] = {**self._ENTRY_DEFAULTS, "mass": mass}
@@ -137,18 +166,26 @@ class CentralModificationDatabase:
     #  Predicates
     # ------------------------------------------------------------------
     @staticmethod
-    def has_active_neutral_loss(entry: dict, enable_labile: bool = True,
-                                enable_mod_nl: bool = True) -> bool:
+    def has_active_neutral_loss(
+        entry: dict, enable_labile: bool = True, enable_mod_nl: bool = True
+    ) -> bool:
         """Return True if *entry* has at least one active neutral loss or remainder ion."""
         nl_val = entry.get("neutral_losses", "")
         # nl_val may be a list of numbers or a comma-separated string
         if isinstance(nl_val, list):
-            has_nl = bool(nl_val and any(float(x) > 0 for x in nl_val)) and enable_mod_nl
+            has_nl = (
+                bool(nl_val and any(float(x) > 0 for x in nl_val)) and enable_mod_nl
+            )
         else:
-            has_nl = bool(
-                nl_val and isinstance(nl_val, str) and nl_val.strip()
-                and any(float(x) > 0 for x in nl_val.split(",") if x.strip())
-            ) and enable_mod_nl
+            has_nl = (
+                bool(
+                    nl_val
+                    and isinstance(nl_val, str)
+                    and nl_val.strip()
+                    and any(float(x) > 0 for x in nl_val.split(",") if x.strip())
+                )
+                and enable_mod_nl
+            )
         has_labile = enable_labile and entry.get("labile_loss", False)
         return has_nl or has_labile
 
@@ -166,7 +203,17 @@ class CentralModificationDatabase:
     def get_all_entries(self) -> dict[str, dict]:
         return dict(self.mods)
 
-    def find_by_mass(self, mass: float, tolerance: float | None = None) -> Optional[str]:
+    def get_glycan_modifications(self) -> dict[str, dict]:
+        """Return all entries flagged as glycan modifications."""
+        return {
+            name: entry
+            for name, entry in self.mods.items()
+            if entry.get("is_glycan", False)
+        }
+
+    def find_by_mass(
+        self, mass: float, tolerance: float | None = None
+    ) -> Optional[str]:
         """Reverse-lookup: mass → modification name (first match within *tolerance*)."""
         tol = tolerance if tolerance is not None else self.TOLERANCE
         for name, entry in self.mods.items():
@@ -174,7 +221,9 @@ class CentralModificationDatabase:
                 return name
         return None
 
-    def get_neutral_losses_for_mass(self, mass: float, tolerance: float | None = None) -> Optional[dict]:
+    def get_neutral_losses_for_mass(
+        self, mass: float, tolerance: float | None = None
+    ) -> Optional[dict]:
         """Return neutral-loss config for the modification matching *mass*.
 
         Returns a dict with keys ``neutral_losses`` (list[float]),
@@ -198,8 +247,7 @@ class CentralModificationDatabase:
     def as_modification_list(self) -> list[dict]:
         """Return ``[{'Name': ..., 'Mass': ...}, ...]`` for the spectrum viewer."""
         return [
-            {"Name": name, "Mass": entry["mass"]}
-            for name, entry in self.mods.items()
+            {"Name": name, "Mass": entry["mass"]} for name, entry in self.mods.items()
         ]
 
     def as_dataframe(self) -> "pd.DataFrame":

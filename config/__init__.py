@@ -3,4 +3,4 @@
 from .ion_presets import ION_PRESETS
 from .table_config import TableConfig
 
-__all__ = ['ION_PRESETS', 'TableConfig']
+__all__ = ["ION_PRESETS", "TableConfig"]

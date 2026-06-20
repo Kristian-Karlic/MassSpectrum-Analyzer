@@ -10,10 +10,21 @@ class PSMNormalizer(ABC):
     """
 
     INTERNAL_COLUMNS = [
-        "Peptide", "Modified Peptide", "Charge", "Observed M/Z",
-        "Assigned Modifications", "Parsed Modifications", "Hyperscore",
-        "Protein", "Peptide Length", "Prev AA", "Next AA",
-        "Protein Start", "Protein End", "Spectrum file", "index",
+        "Peptide",
+        "Modified Peptide",
+        "Charge",
+        "Observed M/Z",
+        "Assigned Modifications",
+        "Parsed Modifications",
+        "Hyperscore",
+        "Protein",
+        "Peptide Length",
+        "Prev AA",
+        "Next AA",
+        "Protein Start",
+        "Protein End",
+        "Spectrum file",
+        "index",
     ]
 
     @abstractmethod
@@ -31,8 +42,10 @@ class PSMNormalizer(ABC):
     def validate_output(self, df: pd.DataFrame) -> bool:
         missing = set(self.INTERNAL_COLUMNS) - set(df.columns)
         if missing:
-            print(f"[WARNING] {self.get_engine_name()} normalizer output "
-                  f"missing columns: {missing}")
+            print(
+                f"[WARNING] {self.get_engine_name()} normalizer output "
+                f"missing columns: {missing}"
+            )
             return False
         return True
 

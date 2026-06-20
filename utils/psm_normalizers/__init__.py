@@ -6,4 +6,18 @@ from .metamorpheus_normalizer import MetaMorpheusNormalizer
 from .byonic_normalizer import ByonicNormalizer
 from .psm_utils_normalizer import PSMUtilsNormalizer
 from .psm_utils_format_dialog import PSMUtilsFormatDialog
+from .ptm_result_dialog import PtmResultLocalizationDialog
 from .normalizer_factory import NormalizerFactory
+
+__all__ = [
+    "PSMNormalizer",
+    "MSFraggerNormalizer",
+    "MSFraggerPreValidationNormalizer",
+    "MaxQuantNormalizer",
+    "MetaMorpheusNormalizer",
+    "ByonicNormalizer",
+    "PSMUtilsNormalizer",
+    "PSMUtilsFormatDialog",
+    "PtmResultLocalizationDialog",
+    "NormalizerFactory",
+]

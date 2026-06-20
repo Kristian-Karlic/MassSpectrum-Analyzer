@@ -8,9 +8,20 @@ Custom presets are persisted as JSON at data/custom_presets.json.
 import json
 import os
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
-    QListWidgetItem, QSplitter, QTextEdit, QInputDialog, QMessageBox,
-    QFileDialog, QWidget, QFrame, QApplication
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QSplitter,
+    QTextEdit,
+    QInputDialog,
+    QMessageBox,
+    QFileDialog,
+    QWidget,
+    QApplication,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont
@@ -28,6 +39,7 @@ CUSTOM_PRESETS_FILE = "custom_presets.json"
 # ---------------------------------------------------------------------------
 # Persistence helpers
 # ---------------------------------------------------------------------------
+
 
 def load_custom_presets() -> dict:
     """Load user-defined presets from JSON file. Returns {} if file missing or corrupt."""
@@ -61,6 +73,7 @@ def save_custom_presets(presets: dict) -> bool:
 # Export helpers
 # ---------------------------------------------------------------------------
 
+
 def format_preset_for_export(name: str, preset: dict) -> str:
     """Build a human-readable ion list string suitable for referencing in publications."""
     lines = [
@@ -75,7 +88,9 @@ def format_preset_for_export(name: str, preset: dict) -> str:
     diagnostic_ions = preset.get("diagnostic_ions", [])
 
     lines.append(f"Normal Ion Types: {', '.join(normal) if normal else '(none)'}")
-    lines.append(f"Neutral Loss Ion Types: {', '.join(neutral) if neutral else '(none)'}")
+    lines.append(
+        f"Neutral Loss Ion Types: {', '.join(neutral) if neutral else '(none)'}"
+    )
 
     lines.append("")
     lines.append("Custom Ion Series:")
@@ -107,6 +122,7 @@ def format_preset_for_export(name: str, preset: dict) -> str:
 # Preset Manager Dialog
 # ---------------------------------------------------------------------------
 
+
 class PresetManagerDialog(QDialog):
     """Non-modal dialog for managing fragmentation method presets.
 
@@ -122,9 +138,9 @@ class PresetManagerDialog(QDialog):
         self.resize(780, 520)
         # Keep as independent window so the main GUI stays interactive
         self.setWindowFlags(
-            Qt.WindowType.Window |
-            Qt.WindowType.WindowCloseButtonHint |
-            Qt.WindowType.WindowMinMaxButtonsHint
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowCloseButtonHint
+            | Qt.WindowType.WindowMinMaxButtonsHint
         )
 
         self.builtin_presets = builtin_presets  # hardcoded, read-only
@@ -189,7 +205,9 @@ class PresetManagerDialog(QDialog):
         sub = QLabel(
             "Built-in presets are read-only. Custom presets can be renamed, deleted, or exported."
         )
-        sub.setStyleSheet(f"color: {EditorConstants.DISABLED_COLOR()}; font-size: 11px;")
+        sub.setStyleSheet(
+            f"color: {EditorConstants.DISABLED_COLOR()}; font-size: 11px;"
+        )
         sub.setWordWrap(True)
         root.addWidget(sub)
 
@@ -389,8 +407,7 @@ class PresetManagerDialog(QDialog):
             return
 
         new_name, ok = QInputDialog.getText(
-            self, "Rename Preset",
-            "New preset name:", text=old_name
+            self, "Rename Preset", "New preset name:", text=old_name
         )
         if not ok:
             return
@@ -401,8 +418,9 @@ class PresetManagerDialog(QDialog):
         if new_name == old_name:
             return
         if new_name in self.builtin_presets or new_name in self.custom_presets:
-            QMessageBox.warning(self, "Duplicate Name",
-                                f"A preset named '{new_name}' already exists.")
+            QMessageBox.warning(
+                self, "Duplicate Name", f"A preset named '{new_name}' already exists."
+            )
             return
 
         self.custom_presets[new_name] = self.custom_presets.pop(old_name)
@@ -418,10 +436,11 @@ class PresetManagerDialog(QDialog):
             return
 
         reply = QMessageBox.question(
-            self, "Delete Preset",
+            self,
+            "Delete Preset",
             f"Are you sure you want to delete '{name}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
@@ -443,9 +462,10 @@ class PresetManagerDialog(QDialog):
         if not text:
             return
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Export Ion List",
+            self,
+            "Export Ion List",
             os.path.expanduser("~/Documents/fragmentation_method.txt"),
-            "Text files (*.txt);;All files (*.*)"
+            "Text files (*.txt);;All files (*.*)",
         )
         if filename:
             try:

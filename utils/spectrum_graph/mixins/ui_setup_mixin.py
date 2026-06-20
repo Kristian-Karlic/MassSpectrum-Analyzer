@@ -3,12 +3,18 @@ import logging
 import pyqtgraph as pg
 from pyqtgraph import GraphicsLayoutWidget
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QAction, QActionGroup
 from PyQt6.QtWidgets import (
-    QWidget, QMenu, QVBoxLayout, QHBoxLayout, QLabel,
-    QSizePolicy, QDialog, QPushButton, QDoubleSpinBox,
-    QFormLayout, QMenuBar, QMessageBox,
+    QMenu,
+    QVBoxLayout,
+    QHBoxLayout,
+    QSizePolicy,
+    QDialog,
+    QPushButton,
+    QDoubleSpinBox,
+    QFormLayout,
+    QMenuBar,
+    QMessageBox,
 )
 
 from ..config.constants import PlotConstants
@@ -25,8 +31,8 @@ class UISetupMixin:
     def _setup_plot_background_and_styling(self, plots):
         """Apply consistent background and styling to multiple plots"""
         for plot in plots:
-            plot.getViewBox().setBackgroundColor('w')
-        self.glw.setBackground('w')
+            plot.getViewBox().setBackgroundColor("w")
+        self.glw.setBackground("w")
 
     def _setup_main_layout(self):
         """Setup the main layout structure — glw fills all available space directly"""
@@ -48,7 +54,7 @@ class UISetupMixin:
 
         # Graphics layout widget — expands to fill all available space
         self.glw = GraphicsLayoutWidget()
-        self.glw.setBackground('w')
+        self.glw.setBackground("w")
         self.glw.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -60,23 +66,33 @@ class UISetupMixin:
         self._setup_peptide_plot()
 
         # Add spectrum and error plots below
-        self.spectrumplot = self.glw.addPlot(row=1, col=0, viewBox=SpectrumPlotViewBox())
+        self.spectrumplot = self.glw.addPlot(
+            row=1, col=0, viewBox=SpectrumPlotViewBox()
+        )
         self.errorbarplot = self.glw.addPlot(row=2, col=0, viewBox=ErrorplotViewBox())
 
         # Configure plots - MOVED FROM _setup_plots()
         self._configure_plot_axis(
-            self.spectrumplot, 'Relative Intensity (%)', 'm/z',
-            PlotConstants.SPECTRUM_Y_RANGE, (True, True)
+            self.spectrumplot,
+            "Relative Intensity (%)",
+            "m/z",
+            PlotConstants.SPECTRUM_Y_RANGE,
+            (True, True),
         )
         self._configure_plot_axis(
-            self.errorbarplot, 'Error (ppm)', 'm/z',
-            PlotConstants.ERROR_Y_RANGE, (True, False)
+            self.errorbarplot,
+            "Error (ppm)",
+            "m/z",
+            PlotConstants.ERROR_Y_RANGE,
+            (True, False),
         )
 
         # Set viewbox references - MOVED FROM _setup_plots()
         self.view = self.spectrumplot.getViewBox()
         for viewbox in [self.view, self.errorbarplot.getViewBox()]:
-            viewbox.set_plot_item(self.spectrumplot if viewbox == self.view else self.errorbarplot)
+            viewbox.set_plot_item(
+                self.spectrumplot if viewbox == self.view else self.errorbarplot
+            )
             viewbox.viewer_instance = self
 
         # Setup linking and styling - MOVED FROM _setup_plots()
@@ -91,13 +107,15 @@ class UISetupMixin:
         self.modifications = {}  # position -> [(mass, name), ...]
         self.nl_legend_entries = []  # [(symbol, label, mass_da, mod_name), ...]
         self.available_modifications = []
-        self.fragment_lines = []  # List of tuples: (vertical_line, horizontal_line, fragment_data)
+        self.fragment_lines = (
+            []
+        )  # List of tuples: (vertical_line, horizontal_line, fragment_data)
         self.fragment_line_data = []  # Store fragment data separately for lookup
         self.highlight_items = []
 
         # RESPONSIVE TEXT SIZING PARAMETERS
         self.fixed_width = 600  # Available width for peptide display
-        self.max_aa_for_full_size = 28 # Maximum amino acids at full size
+        self.max_aa_for_full_size = 28  # Maximum amino acids at full size
         self.base_font_size = 25  # Base font size for <= 20 AA
         self.min_font_size = 12  # Minimum font size for very long peptides
         self.base_letter_spacing = 20.0  # Base spacing between letters
@@ -111,10 +129,9 @@ class UISetupMixin:
         self.modification_items = []
         self.position_calculator = None
 
-
         # Configure peptide plot
-        self.peptide_plot.hideAxis('left')
-        self.peptide_plot.hideAxis('bottom')
+        self.peptide_plot.hideAxis("left")
+        self.peptide_plot.hideAxis("bottom")
         self.peptide_plot.setMouseEnabled(x=False, y=False)
         self.peptide_plot.hideButtons()
         self.peptide_plot.setXRange(0, self.fixed_width, padding=0)
@@ -131,8 +148,7 @@ class UISetupMixin:
         """Setup menu bar with all controls moved from toolbar"""
         self.menu_bar = QMenuBar(self)
         self.menu_bar.setSizePolicy(
-            QSizePolicy.Policy.Preferred,
-            QSizePolicy.Policy.Fixed
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
         )
         self.menu_bar.setMaximumWidth(1000)  # Match widget width
 
@@ -142,11 +158,10 @@ class UISetupMixin:
         # Export submenu
         export_menu = file_menu.addMenu("Export")
 
-        # Export SVG action
-        export_svg_action = QAction("Export as SVG...", self)
-        export_svg_action.triggered.connect(self.export_svg)
-        export_svg_action.setShortcut("Ctrl+E")
-        export_menu.addAction(export_svg_action)
+        export_pdf_action = QAction("Export as PDF...", self)
+        export_pdf_action.triggered.connect(self.export_pdf)
+        export_pdf_action.setShortcut("Ctrl+E")
+        export_menu.addAction(export_pdf_action)
 
         export_menu.addSeparator()
 
@@ -165,11 +180,10 @@ class UISetupMixin:
 
         export_menu.addSeparator()
 
-        # Combined export action
-        export_combined_action = QAction("Export SVG + All Data...", self)
-        export_combined_action.triggered.connect(self.export_combined_svg_and_data)
-        export_combined_action.setShortcut("Ctrl+Shift+E")
-        export_menu.addAction(export_combined_action)
+        export_combined_pdf_action = QAction("Export PDF + All Data...", self)
+        export_combined_pdf_action.triggered.connect(self.export_combined_pdf_and_data)
+        export_combined_pdf_action.setShortcut("Ctrl+Shift+E")
+        export_menu.addAction(export_combined_pdf_action)
 
         file_menu.addSeparator()
 
@@ -205,7 +219,9 @@ class UISetupMixin:
             action.setData(size)
             if size == self.annotation_font_size:
                 action.setChecked(True)
-            action.triggered.connect(lambda checked, s=size: self.set_annotation_font_size(s))
+            action.triggered.connect(
+                lambda checked, s=size: self.set_annotation_font_size(s)
+            )
             font_group.addAction(action)
             font_menu.addAction(action)
 
@@ -232,6 +248,42 @@ class UISetupMixin:
         vertical_action.triggered.connect(lambda: self.set_text_rotation(90))
         rotation_group.addAction(vertical_action)
         rotation_menu.addAction(vertical_action)
+
+        view_menu.addSeparator()
+
+        # Y-Axis Mode submenu
+        y_axis_menu = view_menu.addMenu("Y-Axis Mode")
+        y_axis_group = QActionGroup(self)
+        y_axis_group.setExclusive(True)
+
+        y_axis_modes = [
+            ("relative", "Relative Intensity (%)"),
+            ("sqrt", "Sqrt Intensity"),
+        ]
+        for mode_id, mode_label in y_axis_modes:
+            action = QAction(mode_label, self)
+            action.setCheckable(True)
+            action.setData(mode_id)
+            action.setChecked(mode_id == "relative")
+            action.triggered.connect(lambda checked, m=mode_id: self.set_y_axis_mode(m))
+            y_axis_group.addAction(action)
+            y_axis_menu.addAction(action)
+
+        view_menu.addSeparator()
+
+        # Intensity filter — only active for Raw / Sqrt modes
+        self.intensity_filter_action = QAction("Enable Intensity Filter", self)
+        self.intensity_filter_action.setCheckable(True)
+        self.intensity_filter_action.setEnabled(False)
+        self.intensity_filter_action.toggled.connect(self.set_intensity_filter_enabled)
+        view_menu.addAction(self.intensity_filter_action)
+
+        self.set_filter_value_action = QAction("Set Intensity Filter Value\u2026", self)
+        self.set_filter_value_action.setEnabled(False)
+        self.set_filter_value_action.triggered.connect(
+            self.show_intensity_filter_dialog
+        )
+        view_menu.addAction(self.set_filter_value_action)
 
         # Tools Menu
         tools_menu = self.menu_bar.addMenu("Tools")
@@ -263,7 +315,7 @@ class UISetupMixin:
         stretch_factors = {
             0: 1,  # Peptide plot - fixed size
             1: 7,  # Spectrum plot - main content
-            2: 2   # Error plot - smaller
+            2: 2,  # Error plot - smaller
         }
         for row, factor in stretch_factors.items():
             self.glw.ci.layout.setRowStretchFactor(row, factor)
@@ -281,7 +333,9 @@ class UISetupMixin:
         spectrum_viewbox.sigRangeChanged.connect(self._force_range_sync)
         error_viewbox.sigRangeChanged.connect(self._force_range_sync)
 
-    def _configure_plot_axis(self, plot, left_label, bottom_label, y_range, mouse_enabled=(True, True)):
+    def _configure_plot_axis(
+        self, plot, left_label, bottom_label, y_range, mouse_enabled=(True, True)
+    ):
         """Configure plot with responsive font sizing and theme-aware colors"""
         plot.hideButtons()
         plot.showGrid(x=PlotConstants.SHOW_GRID, y=PlotConstants.SHOW_GRID)
@@ -290,38 +344,53 @@ class UISetupMixin:
         axis_color = EditorConstants.TEXT_COLOR()
 
         # Use consistent font sizes with theme-aware color
-        plot.setLabel('left', f'<span style="font-size:{PlotConstants.LABEL_FONT_SIZE}pt;font-weight:bold;color:{axis_color}">{left_label}</span>')
-        plot.setLabel('bottom', f'<span style="font-size:{PlotConstants.LABEL_FONT_SIZE}pt;font-weight:bold;color:{axis_color}">{bottom_label}</span>')
+        plot.setLabel(
+            "left",
+            f'<span style="font-size:{PlotConstants.LABEL_FONT_SIZE}pt;font-weight:bold;color:{axis_color}">{left_label}</span>',
+        )
+        plot.setLabel(
+            "bottom",
+            f'<span style="font-size:{PlotConstants.LABEL_FONT_SIZE}pt;font-weight:bold;color:{axis_color}">{bottom_label}</span>',
+        )
 
         # Font styling with responsive sizes
-        tick_font = QFont(PlotConstants.DEFAULT_FONT_FAMILY, PlotConstants.TICK_FONT_SIZE, QFont.Weight.Bold)
+        tick_font = QFont(
+            PlotConstants.DEFAULT_FONT_FAMILY,
+            PlotConstants.TICK_FONT_SIZE,
+            QFont.Weight.Bold,
+        )
 
         # Configure left (Y) axis with theme-aware colors
-        left_axis = plot.getAxis('left')
+        left_axis = plot.getAxis("left")
         left_axis.setStyle(
-            tickFont=tick_font,
-            showValues=True,
-            tickLength=PlotConstants.TICK_LENGTH
+            tickFont=tick_font, showValues=True, tickLength=PlotConstants.TICK_LENGTH
         )
         left_axis.setTextPen(axis_color)
         left_axis.setPen(pg.mkPen(axis_color, width=PlotConstants.AXIS_PEN_WIDTH))
         left_axis.setWidth(PlotConstants.Y_AXIS_WIDTH)  # Fixed width for alignment
 
         # Configure bottom (X) axis with theme-aware colors
-        bottom_axis = plot.getAxis('bottom')
+        bottom_axis = plot.getAxis("bottom")
         bottom_axis.setStyle(
-            tickFont=tick_font,
-            showValues=True,
-            tickLength=PlotConstants.TICK_LENGTH
+            tickFont=tick_font, showValues=True, tickLength=PlotConstants.TICK_LENGTH
         )
         bottom_axis.setTextPen(axis_color)
         bottom_axis.setPen(pg.mkPen(axis_color, width=PlotConstants.AXIS_PEN_WIDTH))
 
         # Set major tick spacing based on plot type
-        if 'Intensity' in left_label:  # Spectrum plot
+        if "Intensity" in left_label:  # Spectrum plot
             # Set major ticks for spectrum Y-axis (every 20%)
-            left_axis.setTicks([[(i, str(i)) for i in range(0, 101, PlotConstants.MAJOR_TICK_SPACING_SPECTRUM)]])
-        elif 'Error' in left_label:  # Error plot
+            left_axis.setTicks(
+                [
+                    [
+                        (i, str(i))
+                        for i in range(
+                            0, 101, PlotConstants.MAJOR_TICK_SPACING_SPECTRUM
+                        )
+                    ]
+                ]
+            )
+        elif "Error" in left_label:  # Error plot
             # Set major ticks for error Y-axis (every 5 ppm)
             error_ticks = list(range(-10, 11, PlotConstants.MAJOR_TICK_SPACING_ERROR))
             left_axis.setTicks([[(i, str(i)) for i in error_ticks]])
@@ -340,25 +409,36 @@ class UISetupMixin:
 
         # Determine which plot this is from
         is_spectrum_plot = viewbox == self.spectrumplot.getViewBox()
-        is_error_plot = viewbox == self.errorbarplot.getViewBox()
 
         plot_name = "Spectrum" if is_spectrum_plot else "Error"
 
         # Reset Zoom action
         reset_action = QAction(f"Reset {plot_name} Zoom", self)
-        reset_action.triggered.connect(lambda: self.reset_plot_zoom(viewbox, is_spectrum_plot))
+        reset_action.triggered.connect(
+            lambda: self.reset_plot_zoom(viewbox, is_spectrum_plot)
+        )
         menu.addAction(reset_action)
+
+        # Reset label positions — only relevant on the spectrum plot
+        if is_spectrum_plot:
+            reset_labels_action = QAction("Reset All Label Positions", self)
+            reset_labels_action.triggered.connect(self._reset_all_annotation_positions)
+            menu.addAction(reset_labels_action)
 
         menu.addSeparator()
 
         # X-axis adjust action
         x_axis_action = QAction("Adjust X-Axis Range...", self)
-        x_axis_action.triggered.connect(lambda: self.show_axis_adjust_dialog(viewbox, 'x', plot_name))
+        x_axis_action.triggered.connect(
+            lambda: self.show_axis_adjust_dialog(viewbox, "x", plot_name)
+        )
         menu.addAction(x_axis_action)
 
         # Y-axis adjust action
         y_axis_action = QAction("Adjust Y-Axis Range...", self)
-        y_axis_action.triggered.connect(lambda: self.show_axis_adjust_dialog(viewbox, 'y', plot_name))
+        y_axis_action.triggered.connect(
+            lambda: self.show_axis_adjust_dialog(viewbox, "y", plot_name)
+        )
         menu.addAction(y_axis_action)
 
         # Show menu
@@ -369,35 +449,44 @@ class UISetupMixin:
         try:
             if is_spectrum_plot:
                 # Reset spectrum plot
-                if hasattr(viewbox, 'initial_x_range') and viewbox.initial_x_range:
+                if hasattr(viewbox, "initial_x_range") and viewbox.initial_x_range:
                     viewbox.setXRange(*viewbox.initial_x_range, padding=0)
-                if hasattr(viewbox, 'initial_y_range') and viewbox.initial_y_range:
+                if hasattr(viewbox, "initial_y_range") and viewbox.initial_y_range:
                     viewbox.setYRange(*viewbox.initial_y_range, padding=0)
                 else:
                     # Default spectrum Y range
                     viewbox.setYRange(0, PlotConstants.SPECTRUM_Y_LIMIT, padding=0)
 
                 # Set spectrum Y ticks
-                if hasattr(viewbox, 'plot_item') and viewbox.plot_item:
-                    left_axis = viewbox.plot_item.getAxis('left')
-                    left_axis.setTicks([[(i, str(i)) for i in range(0, 101, PlotConstants.MAJOR_TICK_SPACING_SPECTRUM)]])
+                if hasattr(viewbox, "plot_item") and viewbox.plot_item:
+                    y_axis_mode = getattr(self, "y_axis_mode", "relative")
+                    y_max = getattr(
+                        self, "_spectrum_y_max", PlotConstants.SPECTRUM_Y_LIMIT
+                    )
+                    self._update_spectrum_y_ticks(y_axis_mode, y_max)
 
             else:
                 # Reset error plot
-                if hasattr(viewbox, 'initial_x_range') and viewbox.initial_x_range:
+                if hasattr(viewbox, "initial_x_range") and viewbox.initial_x_range:
                     viewbox.setXRange(*viewbox.initial_x_range, padding=0)
-                if hasattr(viewbox, 'initial_y_range') and viewbox.initial_y_range:
+                if hasattr(viewbox, "initial_y_range") and viewbox.initial_y_range:
                     viewbox.setYRange(*viewbox.initial_y_range, padding=0)
                 else:
                     # Default error Y range
-                    if hasattr(viewbox, 'fixed_y_min') and hasattr(viewbox, 'fixed_y_max'):
-                        viewbox.setYRange(viewbox.fixed_y_min, viewbox.fixed_y_max, padding=0)
+                    if hasattr(viewbox, "fixed_y_min") and hasattr(
+                        viewbox, "fixed_y_max"
+                    ):
+                        viewbox.setYRange(
+                            viewbox.fixed_y_min, viewbox.fixed_y_max, padding=0
+                        )
                     else:
                         viewbox.setYRange(-10, 10, padding=0)
 
-                if hasattr(viewbox, 'plot_item') and viewbox.plot_item:
-                    left_axis = viewbox.plot_item.getAxis('left')
-                    if hasattr(viewbox, 'fixed_y_min') and hasattr(viewbox, 'fixed_y_max'):
+                if hasattr(viewbox, "plot_item") and viewbox.plot_item:
+                    left_axis = viewbox.plot_item.getAxis("left")
+                    if hasattr(viewbox, "fixed_y_min") and hasattr(
+                        viewbox, "fixed_y_max"
+                    ):
                         y_min = int(viewbox.fixed_y_min)
                         y_max = int(viewbox.fixed_y_max)
                     else:
@@ -405,20 +494,30 @@ class UISetupMixin:
                         y_max = 10
 
                     # Generate error plot ticks
-                    error_ticks = list(range(y_min, y_max + 1, PlotConstants.MAJOR_TICK_SPACING_ERROR))
+                    error_ticks = list(
+                        range(y_min, y_max + 1, PlotConstants.MAJOR_TICK_SPACING_ERROR)
+                    )
                     left_axis.setTicks([[(i, str(i)) for i in error_ticks]])
 
-            if hasattr(viewbox, 'update_adaptive_x_ticks'):
+            if hasattr(viewbox, "update_adaptive_x_ticks"):
                 viewbox.update_adaptive_x_ticks()
-            elif hasattr(viewbox, 'viewer_instance') and viewbox.viewer_instance:
+            elif hasattr(viewbox, "viewer_instance") and viewbox.viewer_instance:
                 # Update X ticks using viewer instance
-                if hasattr(viewbox, 'initial_x_range') and viewbox.initial_x_range:
+                if hasattr(viewbox, "initial_x_range") and viewbox.initial_x_range:
                     plots = [viewbox.plot_item]
-                    if hasattr(viewbox, 'linked_viewbox') and viewbox.linked_viewbox and viewbox.linked_viewbox.plot_item:
+                    if (
+                        hasattr(viewbox, "linked_viewbox")
+                        and viewbox.linked_viewbox
+                        and viewbox.linked_viewbox.plot_item
+                    ):
                         plots.append(viewbox.linked_viewbox.plot_item)
-                    viewbox.viewer_instance._update_plot_ticks(viewbox.initial_x_range, plots)
+                    viewbox.viewer_instance._update_plot_ticks(
+                        viewbox.initial_x_range, plots
+                    )
 
-            logger.debug(f"Reset zoom for {'spectrum' if is_spectrum_plot else 'error'} plot")
+            logger.debug(
+                f"Reset zoom for {'spectrum' if is_spectrum_plot else 'error'} plot"
+            )
 
         except Exception as e:
             logger.error(f"Failed to reset plot zoom: {e}")
@@ -435,13 +534,13 @@ class UISetupMixin:
         form_layout = QFormLayout()
 
         # Get current range
-        if axis == 'x':
+        if axis == "x":
             current_range = viewbox.viewRange()[0]
         else:
             current_range = viewbox.viewRange()[1]
 
         # Create spin boxes with appropriate precision
-        if axis == 'x':
+        if axis == "x":
             # X-axis (m/z values) - higher precision
             min_spinbox = QDoubleSpinBox()
             max_spinbox = QDoubleSpinBox()
@@ -488,9 +587,11 @@ class UISetupMixin:
 
         # Apply button
         apply_button = QPushButton("Apply")
-        apply_button.clicked.connect(lambda: self.apply_axis_range(
-            viewbox, axis, min_spinbox.value(), max_spinbox.value(), dialog
-        ))
+        apply_button.clicked.connect(
+            lambda: self.apply_axis_range(
+                viewbox, axis, min_spinbox.value(), max_spinbox.value(), dialog
+            )
+        )
         button_layout.addWidget(apply_button)
 
         # Cancel button
@@ -509,27 +610,36 @@ class UISetupMixin:
             # Validate range
             if min_val >= max_val:
 
-                QMessageBox.warning(dialog, "Invalid Range",
-                                  f"Minimum value ({min_val}) must be less than maximum value ({max_val})")
+                QMessageBox.warning(
+                    dialog,
+                    "Invalid Range",
+                    f"Minimum value ({min_val}) must be less than maximum value ({max_val})",
+                )
                 return
 
             # Apply the range
-            if axis == 'x':
+            if axis == "x":
                 viewbox.setXRange(min_val, max_val, padding=0)
             else:
                 viewbox.setYRange(min_val, max_val, padding=0)
 
             # Update ticks after range change
-            if hasattr(viewbox, 'viewer_instance') and viewbox.viewer_instance:
-                if axis == 'x':
+            if hasattr(viewbox, "viewer_instance") and viewbox.viewer_instance:
+                if axis == "x":
                     # Update X ticks for both plots if linked
                     plots = [viewbox.plot_item]
-                    if hasattr(viewbox, 'linked_viewbox') and viewbox.linked_viewbox and viewbox.linked_viewbox.plot_item:
+                    if (
+                        hasattr(viewbox, "linked_viewbox")
+                        and viewbox.linked_viewbox
+                        and viewbox.linked_viewbox.plot_item
+                    ):
                         plots.append(viewbox.linked_viewbox.plot_item)
-                    viewbox.viewer_instance._update_plot_ticks((min_val, max_val), plots)
+                    viewbox.viewer_instance._update_plot_ticks(
+                        (min_val, max_val), plots
+                    )
                 else:
                     # Update Y ticks
-                    if hasattr(viewbox, 'update_adaptive_y_ticks'):
+                    if hasattr(viewbox, "update_adaptive_y_ticks"):
                         viewbox.update_adaptive_y_ticks()
 
             logger.debug(f"Applied {axis}-axis range: {min_val} to {max_val}")

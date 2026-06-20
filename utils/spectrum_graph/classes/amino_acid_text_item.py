@@ -18,7 +18,7 @@ class AminoAcidTextItem(pg.TextItem):
         self._temp_emphasized = False  # For right-click context menu
         self.is_hovered = False
         # Don't store original_color - always get it dynamically from theme
-        self.hover_color = 'blue'
+        self.hover_color = "blue"
         self.char = text if text else None
         self.setAcceptHoverEvents(True)
 
@@ -33,10 +33,14 @@ class AminoAcidTextItem(pg.TextItem):
         if not char:
             char = ""
 
-        font_size = self.parent_widget._calculate_font_size(PlotConstants.PEPTIDE_FONT_SIZE, scale)
+        font_size = self.parent_widget._calculate_font_size(
+            PlotConstants.PEPTIDE_FONT_SIZE, scale
+        )
         color = self.hover_color if hasattr(self, "hover_color") else "blue"
 
-        super().setHtml(f'<span style="font-weight:bold; color:{color}; font-size:{font_size}px;">{char}</span>')
+        super().setHtml(
+            f'<span style="font-weight:bold; color:{color}; font-size:{font_size}px;">{char}</span>'
+        )
         self._hover_emphasized = True
 
     def remove_hover_emphasis(self):
@@ -59,10 +63,14 @@ class AminoAcidTextItem(pg.TextItem):
         if not char:
             char = ""
 
-        font_size = self.parent_widget._calculate_font_size(PlotConstants.PEPTIDE_FONT_SIZE, scale)
+        font_size = self.parent_widget._calculate_font_size(
+            PlotConstants.PEPTIDE_FONT_SIZE, scale
+        )
         color = self.hover_color if hasattr(self, "hover_color") else "blue"
 
-        super().setHtml(f'<span style="font-weight:bold; color:{color}; font-size:{font_size}px;">{char}</span>')
+        super().setHtml(
+            f'<span style="font-weight:bold; color:{color}; font-size:{font_size}px;">{char}</span>'
+        )
         self._temp_emphasized = True
 
         # Remove hover emphasis since we now have temporary emphasis
@@ -84,15 +92,21 @@ class AminoAcidTextItem(pg.TextItem):
     def _restore_normal_formatting(self):
         """Helper to restore normal formatting with theme-aware color"""
         char = getattr(self, "char", "")
-        font_size = self.parent_widget._calculate_font_size(PlotConstants.PEPTIDE_FONT_SIZE)
+        font_size = self.parent_widget._calculate_font_size(
+            PlotConstants.PEPTIDE_FONT_SIZE
+        )
         # Always get the CURRENT theme color, not the stored original
         color = EditorConstants.TEXT_COLOR()
-        super().setHtml(f'<span style="font-weight:bold; color:{color}; font-size:{font_size}px;">{char}</span>')
+        super().setHtml(
+            f'<span style="font-weight:bold; color:{color}; font-size:{font_size}px;">{char}</span>'
+        )
 
     def hoverEnterEvent(self, event):
         """Handle mouse enter - apply hover emphasis"""
         self.is_hovered = True
-        if not self.parent_widget or self not in getattr(self.parent_widget, 'highlight_items', []):
+        if not self.parent_widget or self not in getattr(
+            self.parent_widget, "highlight_items", []
+        ):
             # Always use the proper emphasis method
             self.apply_hover_emphasis(scale=1.25)
         super().hoverEnterEvent(event)
@@ -100,7 +114,9 @@ class AminoAcidTextItem(pg.TextItem):
     def hoverLeaveEvent(self, event):
         """Handle mouse leave - remove hover emphasis"""
         self.is_hovered = False
-        if not self.parent_widget or self not in getattr(self.parent_widget, 'highlight_items', []):
+        if not self.parent_widget or self not in getattr(
+            self.parent_widget, "highlight_items", []
+        ):
             # Always use the proper formatting restoration method
             self.remove_hover_emphasis()
         super().hoverLeaveEvent(event)

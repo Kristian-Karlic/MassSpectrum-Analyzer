@@ -14,9 +14,11 @@ class ModificationItem(pg.GraphicsObject):
     """Improved draggable modification item with better scaling control"""
 
     modificationMoved = pyqtSignal(int, int, float)  # old_pos, new_pos, mass
-    modificationRemoved = pyqtSignal(int, float)     # position, mass
+    modificationRemoved = pyqtSignal(int, float)  # position, mass
 
-    def __init__(self, position: int, mass: float, name: str, color: QColor, parent_widget):
+    def __init__(
+        self, position: int, mass: float, name: str, color: QColor, parent_widget
+    ):
         super().__init__()
         self.position = position
         self.mass = mass
@@ -31,16 +33,20 @@ class ModificationItem(pg.GraphicsObject):
         self.setAcceptHoverEvents(True)
 
         # Dynamic sizing based on letter spacing instead of fixed size
-        self.height_ratio = 15  # Height as fraction of letter spacing (increased from 8)
-        self.width_ratio = 0.8   # Width as fraction of letter spacing
-        self.min_height = 45      # Minimum height in pixels (increased from 30)
-        self.max_height = 90    # Maximum height in pixels (increased from 60)
-        self.min_width = 6       # Minimum width in pixels
-        self.max_width = 20      # Maximum width in pixels
+        self.height_ratio = (
+            15  # Height as fraction of letter spacing (increased from 8)
+        )
+        self.width_ratio = 0.8  # Width as fraction of letter spacing
+        self.min_height = 45  # Minimum height in pixels (increased from 30)
+        self.max_height = 90  # Maximum height in pixels (increased from 60)
+        self.min_width = 6  # Minimum width in pixels
+        self.max_width = 20  # Maximum width in pixels
 
         # Color properties
         self.color = color
-        self.hover_color = QColor(color.red(), color.green(), color.blue(), 180)  # Lighter version
+        self.hover_color = QColor(
+            color.red(), color.green(), color.blue(), 180
+        )  # Lighter version
         self.current_color = self.color
 
     def get_letter_based_size(self):
@@ -49,8 +55,8 @@ class ModificationItem(pg.GraphicsObject):
             return 12, 15  # Fallback size (increased height)
 
         # Get current responsive parameters
-        font_size = getattr(self.parent_widget, 'current_font_size', 20)
-        letter_spacing = getattr(self.parent_widget, 'letter_spacing', 25)
+        font_size = getattr(self.parent_widget, "current_font_size", 20)
+        letter_spacing = getattr(self.parent_widget, "letter_spacing", 25)
 
         # Scale with font size
         font_scale = font_size / 20  # Base font size ratio
@@ -64,7 +70,7 @@ class ModificationItem(pg.GraphicsObject):
     def boundingRect(self):
         """Return bounding rectangle based on letter spacing"""
         width, height = self.get_letter_based_size()
-        return QRectF(-width/2, -height/2, width, height)
+        return QRectF(-width / 2, -height / 2, width, height)
 
     def paint(self, painter, option, widget):
         """Paint a colored rectangle sized to match letter width"""
@@ -80,7 +86,7 @@ class ModificationItem(pg.GraphicsObject):
             width, height = self.get_letter_based_size()
 
             # Create rectangle
-            rect = QRectF(-width/2, -height/2, width, height)
+            rect = QRectF(-width / 2, -height / 2, width, height)
 
             # Set brush and pen with theme-aware border
             brush = QBrush(self.current_color)
@@ -95,7 +101,7 @@ class ModificationItem(pg.GraphicsObject):
             # Draw rectangle
             painter.drawRect(rect)
 
-        except Exception as e:
+        except Exception:
             # Silent fail during SVG export
             pass
 
@@ -127,8 +133,10 @@ class ModificationItem(pg.GraphicsObject):
             scene_pos = self.mapToScene(event.pos())
             target_scene_pos = scene_pos - self.drag_offset
 
-            if self.parent_widget and hasattr(self.parent_widget, 'peptide_plot'):
-                view_pos = self.parent_widget.peptide_plot.getViewBox().mapSceneToView(target_scene_pos)
+            if self.parent_widget and hasattr(self.parent_widget, "peptide_plot"):
+                view_pos = self.parent_widget.peptide_plot.getViewBox().mapSceneToView(
+                    target_scene_pos
+                )
                 self.setPos(view_pos.x(), view_pos.y())
 
             event.accept()
@@ -141,7 +149,9 @@ class ModificationItem(pg.GraphicsObject):
             current_pos = self.pos()
             new_position = self.parent_widget.get_nearest_position(current_pos.x())
 
-            logger.debug(f"Drag ended, moving from position {self.position} to {new_position}")
+            logger.debug(
+                f"Drag ended, moving from position {self.position} to {new_position}"
+            )
 
             if new_position != self.position and new_position > 0:
                 old_position = self.position

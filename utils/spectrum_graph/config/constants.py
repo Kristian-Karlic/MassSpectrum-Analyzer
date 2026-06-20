@@ -5,6 +5,7 @@ import pandas as pd
 # Re-export for backward compatibility — new code should import from .file_utils directly.
 from .file_utils import get_save_filename, save_dataframe_to_file  # noqa: F401
 
+
 class PlotConstants:
     # Font settings
     LABEL_FONT_SIZE = 16
@@ -13,8 +14,8 @@ class PlotConstants:
 
     # Axis styling
     AXIS_PEN_WIDTH = 2
-    AXIS_PEN_COLOR = 'k'
-    AXIS_TEXT_COLOR = 'black'
+    AXIS_PEN_COLOR = "k"
+    AXIS_TEXT_COLOR = "black"
     TICK_LENGTH = 5
 
     # Plot ranges
@@ -25,8 +26,8 @@ class PlotConstants:
     SHOW_GRID = False
 
     # Zoom / scroll limits
-    MIN_X_RANGE = 0.5       # Minimum visible m/z width
-    MIN_Y_RANGE = 1.0       # Minimum visible intensity width
+    MIN_X_RANGE = 0.5  # Minimum visible m/z width
+    MIN_Y_RANGE = 1.0  # Minimum visible intensity width
     ZOOM_SCALE_FACTOR = 0.5  # Wheel zoom smoothness (fraction of default)
 
     # Target number of ticks for each axis type
@@ -37,17 +38,17 @@ class PlotConstants:
     def auto_tick_spacing(range_max, target_ticks=8):
         """
         Return a nice tick spacing for a given range.
-        
+
         Args:
             range_max: The total range (max - min) to display
             target_ticks: Target number of ticks (default: 8)
-        
+
         Returns:
             A "nice" tick spacing value (1, 2, 5, 10, 20, 50, etc.)
         """
         if range_max <= 0:
             return 1
-            
+
         raw_spacing = range_max / target_ticks
         magnitude = 10 ** math.floor(math.log10(raw_spacing))
         residual = raw_spacing / magnitude
@@ -88,37 +89,37 @@ class PlotConstants:
             return [[(pos, f"{pos:.0f}") for pos in positions]]
 
     # Y-axis alignment settings
-    Y_AXIS_WIDTH = 80  
-    MAJOR_TICK_SPACING_SPECTRUM = 20  
-    MAJOR_TICK_SPACING_ERROR = 5     
+    Y_AXIS_WIDTH = 80
+    MAJOR_TICK_SPACING_SPECTRUM = 20
+    MAJOR_TICK_SPACING_ERROR = 5
 
     # Detection thresholds
     MOUSE_THRESHOLD_PIXELS = 10
     MZ_TOLERANCE = 0.01
-    
+
     # Colors
-    HIGHLIGHT_COLOR = 'yellow'
+    HIGHLIGHT_COLOR = "yellow"
     HIGHLIGHT_WIDTH = 5
-    LINKED_HIGHLIGHT_COLOR = 'cyan'
+    LINKED_HIGHLIGHT_COLOR = "cyan"
     LINKED_HIGHLIGHT_WIDTH = 6
     UNMATCHED_PEAK_ALPHA = 128
-    
+
     # Font sizes
     PEPTIDE_FONT_SIZE = 25
     ANNOTATION_FONT_SIZE = 14
     MEASUREMENT_FONT_SIZE_DEFAULT = 20
     METADATA_FONT_SIZE = 12
     DEFAULT_FONT_SIZE = 12
-    
+
     # Plot layout
     SPECTRUM_Y_LIMIT = 110
-    
+
     # Measurement constants
     PEAK_LINE_WIDTH = 2
-    
+
     # Peak measurement
     PEAK_MEASURE_HIGHLIGHT_WIDTH = 5
-    
+
     # Tooltip settings
     TOOLTIP_OFFSET_X = 15
     TOOLTIP_OFFSET_Y = 15
@@ -133,15 +134,15 @@ class PlotConstants:
 
     # Ion fragment line offsets (shared by all fragment-drawing methods)
     ION_FRAGMENT_OFFSETS = {
-        'a': {'y_offset': -145, 'color_default': 'red'},
-        'b': {'y_offset': -115, 'color_default': 'blue'},
-        'c': {'y_offset': -90, 'color_default': 'green'},
-        'd': {'y_offset': -165, 'color_default': 'teal'},
-        'x': {'y_offset': 145, 'color_default': 'orange'},
-        'y': {'y_offset': 115, 'color_default': 'purple'},
-        'z': {'y_offset': 90, 'color_default': 'brown'},
-        'w': {'y_offset': 65, 'color_default': 'darkcyan'},
-        'v': {'y_offset': 165, 'color_default': 'magenta'},
+        "a": {"y_offset": -145, "color_default": "red"},
+        "b": {"y_offset": -115, "color_default": "blue"},
+        "c": {"y_offset": -90, "color_default": "green"},
+        "d": {"y_offset": -165, "color_default": "teal"},
+        "x": {"y_offset": 145, "color_default": "orange"},
+        "y": {"y_offset": 115, "color_default": "purple"},
+        "z": {"y_offset": 90, "color_default": "brown"},
+        "w": {"y_offset": 65, "color_default": "darkcyan"},
+        "v": {"y_offset": 165, "color_default": "magenta"},
     }
 
 
@@ -152,7 +153,7 @@ def matched_mask(df, monoisotopic_only=False):
         df: DataFrame with at least a 'Matched' column.
         monoisotopic_only: If True, also require Isotope == 0.
     """
-    mask = df['Matched'].notna() & (df['Matched'] != 'No Match')
+    mask = df["Matched"].notna() & (df["Matched"] != "No Match")
     if monoisotopic_only:
-        mask = mask & (pd.to_numeric(df['Isotope'], errors='coerce') == 0)
+        mask = mask & (pd.to_numeric(df["Isotope"], errors="coerce") == 0)
     return mask

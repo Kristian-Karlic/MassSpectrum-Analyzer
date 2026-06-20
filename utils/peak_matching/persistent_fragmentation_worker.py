@@ -5,17 +5,37 @@ import pandas as pd
 import queue
 import hashlib
 import json
-from utils.peak_matching.peptide_fragmentation import calculate_fragment_ions, match_fragment_ions, filter_ions
+from utils.peak_matching.peptide_fragmentation import (
+    calculate_fragment_ions,
+    match_fragment_ions,
+    filter_ions,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class FragmentationTask:
     """Container for fragmentation task data"""
-    def __init__(self, task_id, peptide, modifications, max_charge, ppm_tolerance,
-                 selected_ions, selected_internal_ions, user_mz_values,
-                 diagnostic_ions, custom_ion_series_list, max_neutral_losses=1,
-                 calculate_isotopes=True, mod_neutral_losses=None):
+
+    def __init__(
+        self,
+        task_id,
+        peptide,
+        modifications,
+        max_charge,
+        ppm_tolerance,
+        selected_ions,
+        selected_internal_ions,
+        user_mz_values,
+        diagnostic_ions,
+        custom_ion_series_list,
+        max_neutral_losses=1,
+        calculate_isotopes=True,
+        isotope_max=4,
+        mod_neutral_losses=None,
+        glycan_composition_str=None,
+        glycan_max_charge=None,
+    ):
         self.task_id = task_id
         self.peptide = peptide
         self.modifications = modifications
@@ -28,17 +48,20 @@ class FragmentationTask:
         self.custom_ion_series_list = custom_ion_series_list
         self.max_neutral_losses = max_neutral_losses
         self.calculate_isotopes = calculate_isotopes
+        self.isotope_max = isotope_max
         self.mod_neutral_losses = mod_neutral_losses
+        self.glycan_composition_str = glycan_composition_str
+        self.glycan_max_charge = glycan_max_charge
 
 
 class PersistentFragmentationWorker(QObject):
     """Persistent worker that processes fragmentation tasks in a dedicated thread"""
 
     progressChanged = pyqtSignal(int, str)  # progress, task_id
-    finished = pyqtSignal(object, str)      # result, task_id
-    error = pyqtSignal(str, str)           # error_message, task_id
-    cacheHit = pyqtSignal()                # Signal for cache hit
-    cacheMiss = pyqtSignal()               # Signal for cache miss
+    finished = pyqtSignal(object, str)  # result, task_id
+    error = pyqtSignal(str, str)  # error_message, task_id
+    cacheHit = pyqtSignal()  # Signal for cache hit
+    cacheMiss = pyqtSignal()  # Signal for cache miss
 
     def __init__(self, fragment_cache=None):
         super().__init__()
@@ -145,14 +168,18 @@ class PersistentFragmentationWorker(QObject):
             # Check cache
             cached_result = self.fragment_cache.get(cache_key)
             if cached_result is not None:
-                logger.debug("Cache hit: using cached fragments for task %s", task.task_id)
+                logger.debug(
+                    "Cache hit: using cached fragments for task %s", task.task_id
+                )
                 calculated_ions = cached_result.copy()
                 # Move to end to mark as recently used (LRU)
                 self.fragment_cache.move_to_end(cache_key)
                 self.progressChanged.emit(50, task.task_id)
                 self.cacheHit.emit()  # Emit cache hit signal
             else:
-                logger.debug("Cache miss: calculating new fragments for task %s", task.task_id)
+                logger.debug(
+                    "Cache miss: calculating new fragments for task %s", task.task_id
+                )
                 self.cacheMiss.emit()  # Emit cache miss signal
 
                 self.progressChanged.emit(20, task.task_id)
@@ -166,7 +193,10 @@ class PersistentFragmentationWorker(QObject):
                     task.custom_ion_series_list,
                     max_neutral_losses=task.max_neutral_losses,
                     calculate_isotopes=task.calculate_isotopes,
-                    mod_neutral_losses=task.mod_neutral_losses
+                    isotope_max=task.isotope_max,
+                    mod_neutral_losses=task.mod_neutral_losses,
+                    glycan_composition_str=task.glycan_composition_str,
+                    glycan_max_charge=task.glycan_max_charge,
                 )
 
                 self.progressChanged.emit(35, task.task_id)
@@ -180,19 +210,21 @@ class PersistentFragmentationWorker(QObject):
 
             # Add diagnostic ions
             extra_rows = []
-            for (ion_name, mass_val, color) in task.diagnostic_ions:
-                extra_rows.append({
-                    "Theoretical Mass": mass_val,
-                    "Ion Number": "",
-                    "Ion Type": ion_name,
-                    "Fragment Sequence": "",
-                    "Neutral Loss": "None",
-                    "Charge": 1,
-                    "Isotope": 0,
-                    "Color": color,
-                    "Base Type": None,
-                    "Ion Series Type": "Diagnostic-Ion"
-                })
+            for ion_name, mass_val, color in task.diagnostic_ions:
+                extra_rows.append(
+                    {
+                        "Theoretical Mass": mass_val,
+                        "Ion Number": "",
+                        "Ion Type": ion_name,
+                        "Fragment Sequence": "",
+                        "Neutral Loss": "None",
+                        "Charge": 1,
+                        "Isotope": 0,
+                        "Color": color,
+                        "Base Type": None,
+                        "Ion Series Type": "Diagnostic-Ion",
+                    }
+                )
 
             if extra_rows:
                 df_custom = pd.DataFrame(extra_rows, columns=calculated_ions.columns)
@@ -200,15 +232,16 @@ class PersistentFragmentationWorker(QObject):
             else:
                 combined_df = calculated_ions
 
-            # Store theoretical data
-            theoretical_data = combined_df.copy()
+            # Store theoretical data (combined_df is already a safe copy — either a
+            # fresh concat result or cached_result.copy() from the hit path above)
+            theoretical_data = combined_df
             self.progressChanged.emit(60, task.task_id)
 
             # Perform matching
             matched_data = match_fragment_ions(
-                combined_df.to_dict(orient='records'),
+                combined_df.to_dict(orient="records"),
                 task.user_mz_values,
-                task.ppm_tolerance
+                task.ppm_tolerance,
             )
 
             self.progressChanged.emit(90, task.task_id)
@@ -225,18 +258,38 @@ class PersistentFragmentationWorker(QObject):
         """Generate cache key for the task"""
 
         key_data = {
-            'peptide': task.peptide,
-            'modifications': sorted(task.modifications) if task.modifications else [],
-            'max_charge': task.max_charge,
-            'selected_ions': sorted(task.selected_ions) if task.selected_ions else [],
-            'selected_internal_ions': sorted(task.selected_internal_ions) if task.selected_internal_ions else [],
-            'custom_ion_series': sorted([
-                (ion.get('name', ''), ion.get('base', ''), ion.get('offset', 0), ion.get('restriction', ''))
-                for ion in task.custom_ion_series_list
-            ]) if task.custom_ion_series_list else [],
-            'max_neutral_losses': task.max_neutral_losses,
-            'calculate_isotopes': task.calculate_isotopes,
-            'mod_neutral_losses': str(task.mod_neutral_losses) if task.mod_neutral_losses else None,
+            "peptide": task.peptide,
+            "modifications": sorted(task.modifications) if task.modifications else [],
+            "max_charge": task.max_charge,
+            "selected_ions": sorted(task.selected_ions) if task.selected_ions else [],
+            "selected_internal_ions": (
+                sorted(task.selected_internal_ions)
+                if task.selected_internal_ions
+                else []
+            ),
+            "custom_ion_series": (
+                sorted(
+                    [
+                        (
+                            ion.get("name", ""),
+                            ion.get("base", ""),
+                            ion.get("offset", 0),
+                            ion.get("restriction", ""),
+                        )
+                        for ion in task.custom_ion_series_list
+                    ]
+                )
+                if task.custom_ion_series_list
+                else []
+            ),
+            "max_neutral_losses": task.max_neutral_losses,
+            "calculate_isotopes": task.calculate_isotopes,
+            "isotope_max": task.isotope_max,
+            "mod_neutral_losses": (
+                str(task.mod_neutral_losses) if task.mod_neutral_losses else None
+            ),
+            "glycan_composition_str": task.glycan_composition_str or "",
+            "glycan_max_charge": task.glycan_max_charge,
         }
 
         key_string = json.dumps(key_data, sort_keys=True)
@@ -245,7 +298,9 @@ class PersistentFragmentationWorker(QObject):
     def _manage_cache_size(self, max_cache_size=100):
         """Manage cache size using LRU eviction"""
         while len(self.fragment_cache) > max_cache_size:
-            evicted_key, _ = self.fragment_cache.popitem(last=False)  # evict LRU (oldest accessed)
+            evicted_key, _ = self.fragment_cache.popitem(
+                last=False
+            )  # evict LRU (oldest accessed)
             logger.debug("Cache eviction: cache size now %d", len(self.fragment_cache))
 
 
@@ -255,8 +310,8 @@ class PersistentFragmentationManager(QObject):
     progressChanged = pyqtSignal(int)
     finished = pyqtSignal(object)
     error = pyqtSignal(str)
-    cacheHit = pyqtSignal()    # Forward cache hit signals
-    cacheMiss = pyqtSignal()   # Forward cache miss signals
+    cacheHit = pyqtSignal()  # Forward cache hit signals
+    cacheMiss = pyqtSignal()  # Forward cache miss signals
 
     def __init__(self, fragment_cache=None):
         super().__init__()
@@ -296,20 +351,46 @@ class PersistentFragmentationManager(QObject):
         self.worker_thread.start()
         logger.debug("Persistent manager: worker thread started")
 
-    def submit_task(self, peptide, modifications, max_charge, ppm_tolerance,
-                   selected_ions, selected_internal_ions, user_mz_values,
-                   diagnostic_ions, custom_ion_series_list, max_neutral_losses=1,
-                   calculate_isotopes=True, mod_neutral_losses=None):
+    def submit_task(
+        self,
+        peptide,
+        modifications,
+        max_charge,
+        ppm_tolerance,
+        selected_ions,
+        selected_internal_ions,
+        user_mz_values,
+        diagnostic_ions,
+        custom_ion_series_list,
+        max_neutral_losses=1,
+        calculate_isotopes=True,
+        isotope_max=4,
+        mod_neutral_losses=None,
+        glycan_composition_str=None,
+        glycan_max_charge=None,
+    ):
         """Submit a new fragmentation task"""
         self.task_counter += 1
         task_id = f"task_{self.task_counter}"
         self.current_task_id = task_id
 
         task = FragmentationTask(
-            task_id, peptide, modifications, max_charge, ppm_tolerance,
-            selected_ions, selected_internal_ions, user_mz_values,
-            diagnostic_ions, custom_ion_series_list, max_neutral_losses,
-            calculate_isotopes, mod_neutral_losses
+            task_id,
+            peptide,
+            modifications,
+            max_charge,
+            ppm_tolerance,
+            selected_ions,
+            selected_internal_ions,
+            user_mz_values,
+            diagnostic_ions,
+            custom_ion_series_list,
+            max_neutral_losses,
+            calculate_isotopes,
+            isotope_max,
+            mod_neutral_losses,
+            glycan_composition_str=glycan_composition_str,
+            glycan_max_charge=glycan_max_charge,
         )
 
         if self.worker is None:
@@ -335,18 +416,29 @@ class PersistentFragmentationManager(QObject):
 
     def _cleanup_worker(self):
         """Clean up the worker thread"""
+        thread_stopped = True
+
         if self.worker is not None:
+            # Disconnect signals explicitly so the old worker can be GC'd
+            try:
+                self.worker.progressChanged.disconnect(self._on_worker_progress)
+                self.worker.finished.disconnect(self._on_worker_finished)
+                self.worker.error.disconnect(self._on_worker_error)
+                self.worker.cacheHit.disconnect(self.cacheHit.emit)
+                self.worker.cacheMiss.disconnect(self.cacheMiss.emit)
+            except RuntimeError:
+                pass  # already disconnected
             self.worker.stop_worker()
 
         if self.worker_thread is not None and self.worker_thread.isRunning():
             self.worker_thread.quit()
             if not self.worker_thread.wait(3000):  # Wait up to 3 seconds
                 logger.warning("Worker thread did not finish cleanly")
-                self.worker_thread.terminate()
-                self.worker_thread.wait(1000)
+                thread_stopped = False
 
-        self.worker = None
-        self.worker_thread = None
+        if thread_stopped:
+            self.worker = None
+            self.worker_thread = None
 
     def shutdown(self):
         """Properly shutdown the manager and worker thread"""
@@ -364,9 +456,8 @@ class PersistentFragmentationManager(QObject):
 
             # Wait for thread to finish with timeout
             if not self.worker_thread.wait(2000):  # 2 second timeout
-                logger.warning("Worker thread didn't quit gracefully, terminating...")
-                self.worker_thread.terminate()
-                self.worker_thread.wait(1000)  # Wait 1 more second after terminate
+                logger.warning("Worker thread didn't quit gracefully within timeout")
+                return
 
             logger.debug("Worker thread stopped")
 

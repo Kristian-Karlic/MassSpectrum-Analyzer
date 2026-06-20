@@ -1,12 +1,14 @@
 """UI utility helpers for file dialogs and DataFrame saving."""
+
 import os
 
-import pandas as pd
 from PyQt6.QtCore import QSettings
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
 
-def get_save_filename(parent, title, default_filename, file_filter, settings_key="last_save_directory"):
+def get_save_filename(
+    parent, title, default_filename, file_filter, settings_key="last_save_directory"
+):
     """Get save filename with remembered directory via QSettings.
 
     Args:
@@ -44,10 +46,14 @@ def save_dataframe_to_file(parent, dataframe, filename, description):
         description: Human-readable name shown in success/error messages.
     """
     try:
-        if filename.endswith('.xlsx'):
-            dataframe.to_excel(filename, index=False, engine='openpyxl')
+        if filename.endswith(".xlsx"):
+            dataframe.to_excel(filename, index=False, engine="openpyxl")
         else:
             dataframe.to_csv(filename, index=False)
-        QMessageBox.information(parent, "Success", f"{description} saved successfully to:\n{filename}")
+        QMessageBox.information(
+            parent, "Success", f"{description} saved successfully to:\n{filename}"
+        )
     except Exception as e:
-        QMessageBox.critical(parent, "Error", f"Failed to save {description}:\n{str(e)}")
+        QMessageBox.critical(
+            parent, "Error", f"Failed to save {description}:\n{str(e)}"
+        )

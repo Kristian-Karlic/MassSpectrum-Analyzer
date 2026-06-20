@@ -24,13 +24,13 @@ HexNAcA-dHexNAc2-HexNAc,HexNAcA-dHexNAc<sub>2</sub>-HexNAc,795.3147,#ff007f
 Hex-HexNAc,Hex-HexNAc,366.14,#ff007f
 NeuAc,NeuAc,292.1027,#ff007f
 NeuAc – H2O,NeuAc–H<sub>2</sub>O,274.0921,#ff007f
-HexNAc – C2H4O2,HexNAc – C2H4O2,144.066,#ff007f
-HexNAc – CH6O3,HexNAc – CH6O3,138.055,#ff007f
+HexNAc – C2H4O2,HexNAc – C<sub>2</sub>H<sub>4</sub>O<sub>2</sub><br>,144.066,#ff007f
+HexNAc – CH6O3,HexNAc – CH<sub>6</sub>O<sub>3</sub><br>,138.055,#ff007f
 HexNAc – H2O,HexNAc–H<sub>2</sub>O,186.076,#ff007f
 HexNAc – 2H2O,HexNAc–2H<sub>2</sub>O,168.066,#ff007f
-HexNAc – C2H6O3,HexNAc – C2H6O3,126.055,#ff007f
-NeuAc–2H2O,NeuAc –2 H2O,256.0816,#ff007f
-NeuAc–3H2O,NeuAc–2H2O,238.071,#ff007f
+HexNAc – C2H6O3,HexNAc – C<sub>2</sub>H<sub>6</sub>O<sub>3</sub><br>,126.055,#ff007f
+NeuAc–2H2O,NeuAc – 2H<sub>2</sub>O,256.0816,#ff007f
+NeuAc–3H2O,NeuAc – 3H<sub>2</sub>O<br>,238.071,#ff007f
 A,A,44.05,#ff007f
 R,R,129.114,#ff007f
 N,N,87.056,#ff007f
@@ -50,3 +50,9 @@ T,T,74.061,#ff007f
 W,W,159.092,#ff007f
 Y,Y,136.076,#ff007f
 V,V,72.081,#ff007f
+F3,F3,424.249,#ff007f
+F4,F4,327.185,#ff007f
+F5,F5,301.169,#ff007f
+Test,Test,156.149,#000000
+HexNAc(1)Hex(1)NeuAc(1),HexNAc-Hex-NeuAc,657.2349,#ff007f
+HexNAcHex(2),HexNAcHex(2),528.1912,#ff007f

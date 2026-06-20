@@ -1,7 +1,6 @@
 """Dialog manager for handling non-modal editor dialogs"""
 
 import logging
-from PyQt6.QtWidgets import QMessageBox
 from utils.tables.tableeditor import TableEditorDialog
 
 logger = logging.getLogger(__name__)
@@ -25,7 +24,10 @@ class DataListEditorManager:
             title: Dialog title
         """
         # Check if dialog is already open
-        if data_type in self._active_dialogs and self._active_dialogs[data_type] is not None:
+        if (
+            data_type in self._active_dialogs
+            and self._active_dialogs[data_type] is not None
+        ):
             # Bring existing dialog to front
             existing_dialog = self._active_dialogs[data_type]
             existing_dialog.raise_()
@@ -45,8 +47,10 @@ class DataListEditorManager:
             try:
                 updated_data = editor.get_data()
                 self._apply_data_update(data_type, updated_data, is_live=True)
-                logger.debug(f"Live updated {data_type} with {len(updated_data)} entries")
-            except Exception as e:
+                logger.debug(
+                    f"Live updated {data_type} with {len(updated_data)} entries"
+                )
+            except Exception:
                 logger.exception(f"Failed to apply live update for {data_type}")
 
         def on_dialog_finished():
@@ -55,8 +59,10 @@ class DataListEditorManager:
                 updated_data = editor.get_data()
                 self._apply_data_update(data_type, updated_data, is_live=False)
                 self.parent.show_toast_message(f"{title} updated successfully!")
-                logger.debug(f"Final update for {data_type} with {len(updated_data)} entries")
-            except Exception as e:
+                logger.debug(
+                    f"Final update for {data_type} with {len(updated_data)} entries"
+                )
+            except Exception:
                 logger.exception(f"Failed to apply final update for {data_type}")
             finally:
                 self._active_dialogs[data_type] = None
@@ -66,7 +72,7 @@ class DataListEditorManager:
             self._active_dialogs[data_type] = None
 
         # Connect the signals for live updates (if available)
-        if hasattr(editor, 'data_changed'):
+        if hasattr(editor, "data_changed"):
             editor.data_changed.connect(on_data_updated)
 
         # Connect finish/close signals
@@ -92,7 +98,9 @@ class DataListEditorManager:
         if data_type == "modifications":
             self.parent.available_mods = updated_data
             self.parent.annotation_tab_manager.set_available_modifications(updated_data)
-            logger.debug(f"{log_prefix} updated interactive peptide widget with {len(updated_data)} modifications")
+            logger.debug(
+                f"{log_prefix} updated interactive peptide widget with {len(updated_data)} modifications"
+            )
 
         elif data_type == "diagnostic_ions":
             self.parent.diagnostic_ions = updated_data
@@ -100,10 +108,13 @@ class DataListEditorManager:
             # Reconcile already-selected diagnostic ions with updated properties
             self._reconcile_selected_ions(
                 self.parent.selected_diagnostic_ions_data,
-                updated_data, key_column="Name"
+                updated_data,
+                key_column="Name",
             )
             self.parent._update_selected_diagnostic_ions_table()
-            logger.debug(f"{log_prefix} refreshed diagnostic ions dropdown with {len(updated_data)} items")
+            logger.debug(
+                f"{log_prefix} refreshed diagnostic ions dropdown with {len(updated_data)} items"
+            )
 
         elif data_type == "custom_ion_series":
             self.parent.custom_ion_series = updated_data
@@ -111,10 +122,13 @@ class DataListEditorManager:
             # Reconcile already-selected custom ions with updated properties
             self._reconcile_selected_ions(
                 self.parent.selected_custom_ions_data,
-                updated_data, key_column="Series Name"
+                updated_data,
+                key_column="Series Name",
             )
             self.parent._update_selected_custom_ions_table()
-            logger.debug(f"{log_prefix} refreshed custom ion series dropdown with {len(updated_data)} items")
+            logger.debug(
+                f"{log_prefix} refreshed custom ion series dropdown with {len(updated_data)} items"
+            )
 
     @staticmethod
     def _reconcile_selected_ions(selected_list: list, master_data, key_column: str):
@@ -127,10 +141,12 @@ class DataListEditorManager:
             return
         # Build a lookup from the master DataFrame keyed by the key column
         lookup = {}
-        for _, row in master_data.iterrows():
-            key = row.get(key_column)
+        columns = list(master_data.columns)
+        for row_tuple in master_data.itertuples(index=False, name=None):
+            row_dict = dict(zip(columns, row_tuple))
+            key = row_dict.get(key_column)
             if key is not None:
-                lookup[key] = row.to_dict()
+                lookup[key] = row_dict
 
         for ion_dict in selected_list:
             key = ion_dict.get(key_column)

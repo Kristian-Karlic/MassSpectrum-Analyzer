@@ -6,18 +6,31 @@ and search files. Supports automatic and manual file matching.
 """
 
 import os
+import logging
 from pathlib import Path
 import pandas as pd
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QHeaderView, QPushButton, QComboBox, QLabel, QMessageBox, QGroupBox,
-    QSizePolicy, QStyledItemDelegate, QMenu
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QPushButton,
+    QComboBox,
+    QLabel,
+    QMessageBox,
+    QGroupBox,
+    QStyledItemDelegate,
+    QMenu,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QBrush, QAction
-from utils.style.style import EditorConstants, StyleSheet
+from utils.style.style import StyleSheet
 from utils.utilities import FileTypeUtils
 from utils.psm_normalizers.byonic_normalizer import ByonicNormalizer
+
+logger = logging.getLogger(__name__)
 
 
 class SearchFileDelegate(QStyledItemDelegate):
@@ -36,7 +49,7 @@ class SearchFileDelegate(QStyledItemDelegate):
         while table and not isinstance(table, QTableWidget):
             table = table.parent()
 
-        if not table or not hasattr(table, 'manage_files_manager'):
+        if not table or not hasattr(table, "manage_files_manager"):
             return
 
         manager = table.manage_files_manager
@@ -76,7 +89,7 @@ class SearchFileDelegate(QStyledItemDelegate):
         if table:
             # Update the item with the selected file path
             if selected_path:
-                if hasattr(table, 'manage_files_manager'):
+                if hasattr(table, "manage_files_manager"):
                     manager = table.manage_files_manager
                     display_text = manager._get_partial_path(selected_path)
                 else:
@@ -91,7 +104,7 @@ class SearchFileDelegate(QStyledItemDelegate):
                 item.setData(Qt.ItemDataRole.UserRole, selected_path)
 
             # Trigger the data changed handler
-            if hasattr(table, 'manage_files_manager'):
+            if hasattr(table, "manage_files_manager"):
                 manager = table.manage_files_manager
                 manager._on_cell_data_changed(index, index)
 
@@ -144,12 +157,16 @@ class ManageFilesTabManager:
 
         load_search_btn = QPushButton("Load Search Files")
         load_search_btn.clicked.connect(self._on_load_search_data)
-        load_search_btn.setToolTip("Load search result files (MSFragger, MaxQuant, MetaMorpheus, Byonic)")
+        load_search_btn.setToolTip(
+            "Load search result files (MSFragger, MaxQuant, MetaMorpheus, Byonic)"
+        )
         load_layout.addWidget(load_search_btn)
 
         load_folder_btn = QPushButton("Add MSFragger Folder")
         load_folder_btn.clicked.connect(self._on_add_msfragger_folder)
-        load_folder_btn.setToolTip("Load all psm.tsv files from an MSFragger search folder")
+        load_folder_btn.setToolTip(
+            "Load all psm.tsv files from an MSFragger search folder"
+        )
         load_layout.addWidget(load_folder_btn)
 
         load_layout.addStretch()
@@ -164,7 +181,9 @@ class ManageFilesTabManager:
 
         auto_match_btn = QPushButton("Auto-Match Files")
         auto_match_btn.clicked.connect(self.auto_match_files)
-        auto_match_btn.setToolTip("Automatically match search files to raw files based on spectrum file names")
+        auto_match_btn.setToolTip(
+            "Automatically match search files to raw files based on spectrum file names"
+        )
         match_layout.addWidget(auto_match_btn)
 
         clear_matches_btn = QPushButton("Clear All Matches")
@@ -223,7 +242,9 @@ class ManageFilesTabManager:
 
         prepare_layout.addStretch()
 
-        prepare_info = QLabel("Combines all matched files and prepares data for analysis")
+        prepare_info = QLabel(
+            "Combines all matched files and prepares data for analysis"
+        )
         prepare_info.setStyleSheet("color: gray; font-style: italic;")
         prepare_layout.addWidget(prepare_info)
 
@@ -236,9 +257,7 @@ class ManageFilesTabManager:
 
     def _setup_table(self):
         """Configure the file table columns and appearance."""
-        headers = [
-            "Raw File", "Raw Type", "Search File", "Search Type", "Validation"
-        ]
+        headers = ["Raw File", "Raw Type", "Search File", "Search Type", "Validation"]
         self.file_table.setColumnCount(len(headers))
         self.file_table.setHorizontalHeaderLabels(headers)
 
@@ -251,16 +270,25 @@ class ManageFilesTabManager:
         # Column sizing
         header = self.file_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Raw File
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Raw Type
+        header.setSectionResizeMode(
+            1, QHeaderView.ResizeMode.ResizeToContents
+        )  # Raw Type
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)  # Search File
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Search Type
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Validation
+        header.setSectionResizeMode(
+            3, QHeaderView.ResizeMode.ResizeToContents
+        )  # Search Type
+        header.setSectionResizeMode(
+            4, QHeaderView.ResizeMode.ResizeToContents
+        )  # Validation
 
         # Set row height to accommodate dropdown combobox
         self.file_table.verticalHeader().setDefaultSectionSize(28)
 
         # Enable editing for delegate cells only
-        self.file_table.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.SelectedClicked)
+        self.file_table.setEditTriggers(
+            QTableWidget.EditTrigger.DoubleClicked
+            | QTableWidget.EditTrigger.SelectedClicked
+        )
 
         self.file_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.file_table.setAlternatingRowColors(True)
@@ -342,7 +370,11 @@ class ManageFilesTabManager:
         search_item.setText(display_text)
 
         # Enable editing for this item
-        editable_flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable
+        editable_flags = (
+            Qt.ItemFlag.ItemIsEnabled
+            | Qt.ItemFlag.ItemIsSelectable
+            | Qt.ItemFlag.ItemIsEditable
+        )
         search_item.setFlags(editable_flags)
         self.file_table.setItem(row, 2, search_item)
 
@@ -361,7 +393,7 @@ class ManageFilesTabManager:
         # Connect delegate data change to update handler
         # We'll need to handle this differently - update via model changed signals
         # For now, we'll handle it by connecting to the table's model changes
-        if not hasattr(self, '_delegate_connected'):
+        if not hasattr(self, "_delegate_connected"):
             self.file_table.model().dataChanged.connect(self._on_cell_data_changed)
             self._delegate_connected = True
 
@@ -369,7 +401,7 @@ class ManageFilesTabManager:
         """Get filename + up to 3 parent directories for display."""
         try:
             path = Path(full_path)
-            parts = path.parts[-(depth + 1):]  # Get last N parts
+            parts = path.parts[-(depth + 1) :]  # Get last N parts
             return os.path.join(*parts)
         except Exception:
             return os.path.basename(full_path)
@@ -444,7 +476,7 @@ class ManageFilesTabManager:
             QMessageBox.information(
                 self.main_app,
                 "Auto-Match",
-                "Please load both raw files and search files first."
+                "Please load both raw files and search files first.",
             )
             return
 
@@ -470,10 +502,9 @@ class ManageFilesTabManager:
                     if len(df_sample) > 100:
                         df_sample = df_sample.iloc[:100]
                 else:
-                    df_sample = pd.read_csv(search_path, sep='\t', nrows=100)
+                    df_sample = pd.read_csv(search_path, sep="\t", nrows=100)
                 normalizer = NormalizerFactory.create(
-                    file_type,
-                    source_file_path=search_path
+                    file_type, source_file_path=search_path
                 )
                 spectrum_files = normalizer.extract_spectrum_files(df_sample)
 
@@ -486,13 +517,13 @@ class ManageFilesTabManager:
                         matched_count += 1
                         break
             except Exception as e:
-                print(f"[WARNING] Could not auto-match {search_path}: {e}")
+                logger.warning(f"Could not auto-match {search_path}: {e}")
 
         self.refresh_file_list()
         QMessageBox.information(
             self.main_app,
             "Auto-Match Complete",
-            f"Matched {matched_count} of {len(raw_files)} raw files."
+            f"Matched {matched_count} of {len(raw_files)} raw files.",
         )
 
     def clear_matches(self):
@@ -537,7 +568,7 @@ class ManageFilesTabManager:
             "Confirm Removal",
             f"Remove {os.path.basename(raw_path)} from the loaded files?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
 
         if reply != QMessageBox.StandardButton.Yes:
@@ -562,9 +593,12 @@ class ManageFilesTabManager:
         self.refresh_file_list()
 
         # Update raw file dropdown if direct scan mode is enabled
-        if (hasattr(self.main_app, 'enable_direct_scan_checkbox') and
-            self.main_app.enable_direct_scan_checkbox.isChecked()):
+        if (
+            hasattr(self.main_app, "enable_direct_scan_checkbox")
+            and self.main_app.enable_direct_scan_checkbox.isChecked()
+        ):
             from utils.utilities import FileProcessingUtils
+
             FileProcessingUtils.update_raw_file_dropdown(
                 self.main_app.raw_file_combo, edm.raw_files
             )
@@ -577,9 +611,7 @@ class ManageFilesTabManager:
 
         if not edm.raw_files:
             QMessageBox.information(
-                self.main_app,
-                "No Files",
-                "No raw files are currently loaded."
+                self.main_app, "No Files", "No raw files are currently loaded."
             )
             return
 
@@ -588,7 +620,7 @@ class ManageFilesTabManager:
             "Confirm Clear All",
             f"Remove all {len(edm.raw_files)} raw file(s)?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
 
         if reply != QMessageBox.StandardButton.Yes:
@@ -604,9 +636,12 @@ class ManageFilesTabManager:
         self.refresh_file_list()
 
         # Update raw file dropdown if direct scan mode is enabled
-        if (hasattr(self.main_app, 'enable_direct_scan_checkbox') and
-            self.main_app.enable_direct_scan_checkbox.isChecked()):
+        if (
+            hasattr(self.main_app, "enable_direct_scan_checkbox")
+            and self.main_app.enable_direct_scan_checkbox.isChecked()
+        ):
             from utils.utilities import FileProcessingUtils
+
             FileProcessingUtils.update_raw_file_dropdown(
                 self.main_app.raw_file_combo, edm.raw_files
             )
@@ -619,9 +654,7 @@ class ManageFilesTabManager:
 
         if not edm.search_files:
             QMessageBox.information(
-                self.main_app,
-                "No Files",
-                "No search files are currently loaded."
+                self.main_app, "No Files", "No search files are currently loaded."
             )
             return
 
@@ -630,7 +663,7 @@ class ManageFilesTabManager:
             "Confirm Clear All",
             f"Remove all {len(edm.search_files)} search file(s)?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
 
         if reply != QMessageBox.StandardButton.Yes:

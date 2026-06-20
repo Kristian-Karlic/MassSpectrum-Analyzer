@@ -1,8 +1,14 @@
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
-    QLineEdit, QPushButton, QGroupBox, QGridLayout, QSpinBox
+    QWidget,
+    QVBoxLayout,
+    QLabel,
+    QComboBox,
+    QLineEdit,
+    QPushButton,
+    QGroupBox,
+    QGridLayout,
+    QSpinBox,
 )
-from PyQt6.QtCore import Qt
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 import pandas as pd
 import numpy as np
@@ -15,15 +21,20 @@ class InteractivePlotWidget(QWidget):
 
     # Columns always offered when present in the DataFrame
     ALLOWED_FIXED_COLUMNS = [
-        'Charge', 'Observed M/Z', 'Hyperscore', 'Annotated_TIC_%', 'Rescore',
-        'Consecutive_Series_Longest', 'Complementary_Pairs',
-        'Morpheus_Score',
-        'Length_Dependent_Normalized_Score',
+        "Charge",
+        "Observed M/Z",
+        "Hyperscore",
+        "Annotated_TIC_%",
+        "Rescore",
+        "Consecutive_Series_Longest",
+        "Complementary_Pairs",
     ]
 
     # Columns derived at load time
     DERIVED_COLUMNS = [
-        'Peptide_Length', 'Consecutive_Series_Pct', 'Complementary_Pairs_Pct',
+        "Peptide_Length",
+        "Consecutive_Series_Pct",
+        "Complementary_Pairs_Pct",
     ]
 
     def __init__(self, parent=None):
@@ -150,7 +161,9 @@ class InteractivePlotWidget(QWidget):
         self.sample_label = sample_label
 
         self.randomize_btn = QPushButton("Randomize")
-        self.randomize_btn.setStyleSheet(EditorConstants.get_pushbutton_style("secondary"))
+        self.randomize_btn.setStyleSheet(
+            EditorConstants.get_pushbutton_style("secondary")
+        )
         self.randomize_btn.clicked.connect(self.update_plot)
 
         grid.addWidget(color_label, 3, 0)
@@ -168,8 +181,11 @@ class InteractivePlotWidget(QWidget):
         layout.addWidget(self.web_view, stretch=1)
 
         # Start with placeholder
-        self.web_view.setHtml(self._placeholder_html(
-            "Load rescoring results to enable interactive plots."))
+        self.web_view.setHtml(
+            self._placeholder_html(
+                "Load rescoring results to enable interactive plots."
+            )
+        )
 
     def _on_plot_type_changed(self, text):
         """Toggle Y-axis / bins visibility based on plot type."""
@@ -201,31 +217,35 @@ class InteractivePlotWidget(QWidget):
         df = self.plot_df
 
         # Peptide length
-        if 'Peptide' in df.columns:
-            df['Peptide_Length'] = df['Peptide'].str.len()
+        if "Peptide" in df.columns:
+            df["Peptide_Length"] = df["Peptide"].str.len()
 
-        backbone = (df['Peptide_Length'] - 1).replace(0, np.nan) if 'Peptide_Length' in df.columns else None
+        backbone = (
+            (df["Peptide_Length"] - 1).replace(0, np.nan)
+            if "Peptide_Length" in df.columns
+            else None
+        )
 
         # Consecutive series as percentage
-        if 'Consecutive_Series_Longest' in df.columns and backbone is not None:
-            consec = pd.to_numeric(df['Consecutive_Series_Longest'], errors='coerce')
-            df['Consecutive_Series_Pct'] = (consec / backbone * 100.0).round(2)
+        if "Consecutive_Series_Longest" in df.columns and backbone is not None:
+            consec = pd.to_numeric(df["Consecutive_Series_Longest"], errors="coerce")
+            df["Consecutive_Series_Pct"] = (consec / backbone * 100.0).round(2)
 
         # Complementary pairs as percentage — parse "5/12" string
-        if 'Complementary_Pairs' in df.columns:
-            parts = df['Complementary_Pairs'].astype(str).str.split('/', expand=True)
+        if "Complementary_Pairs" in df.columns:
+            parts = df["Complementary_Pairs"].astype(str).str.split("/", expand=True)
             if parts.shape[1] >= 2:
-                pairs = pd.to_numeric(parts[0], errors='coerce')
-                possible = pd.to_numeric(parts[1], errors='coerce').replace(0, np.nan)
-                df['Complementary_Pairs_Pct'] = (pairs / possible * 100.0).round(2)
+                pairs = pd.to_numeric(parts[0], errors="coerce")
+                possible = pd.to_numeric(parts[1], errors="coerce").replace(0, np.nan)
+                df["Complementary_Pairs_Pct"] = (pairs / possible * 100.0).round(2)
 
         # Sequence coverage count → percentage columns
         if backbone is not None:
             for col in list(df.columns):
-                if col.startswith('sequence_coverage_count_'):
-                    ion_type = col.replace('sequence_coverage_count_', '')
-                    pct_col = f'sequence_coverage_pct_{ion_type}'
-                    raw = pd.to_numeric(df[col], errors='coerce')
+                if col.startswith("sequence_coverage_count_"):
+                    ion_type = col.replace("sequence_coverage_count_", "")
+                    pct_col = f"sequence_coverage_pct_{ion_type}"
+                    raw = pd.to_numeric(df[col], errors="coerce")
                     df[pct_col] = (raw / backbone * 100.0).round(2)
 
     def _detect_plottable_columns(self):
@@ -240,11 +260,11 @@ class InteractivePlotWidget(QWidget):
         for col in df.columns:
             if col in columns:
                 continue
-            if col.endswith('_count') or col.endswith('_unique_count'):
+            if col.endswith("_count") or col.endswith("_unique_count"):
                 columns.append(col)
-            elif col.startswith('sequence_coverage_count_'):
+            elif col.startswith("sequence_coverage_count_"):
                 columns.append(col)
-            elif col.startswith('sequence_coverage_pct_'):
+            elif col.startswith("sequence_coverage_pct_"):
                 columns.append(col)
         return columns
 
@@ -257,10 +277,10 @@ class InteractivePlotWidget(QWidget):
         self.y_combo.addItems(columns)
 
         # Set sensible defaults
-        if 'Hyperscore' in columns:
-            self.x_combo.setCurrentText('Hyperscore')
-        if 'Rescore' in columns:
-            self.y_combo.setCurrentText('Rescore')
+        if "Hyperscore" in columns:
+            self.x_combo.setCurrentText("Hyperscore")
+        if "Rescore" in columns:
+            self.y_combo.setCurrentText("Rescore")
 
         self.x_combo.blockSignals(False)
         self.y_combo.blockSignals(False)
@@ -269,10 +289,10 @@ class InteractivePlotWidget(QWidget):
         df = self.plot_df
 
         # Group filter
-        if 'Group' in df.columns:
+        if "Group" in df.columns:
             self.group_combo.clear()
             self.group_combo.addItem("All Groups")
-            for g in sorted(df['Group'].dropna().unique()):
+            for g in sorted(df["Group"].dropna().unique()):
                 self.group_combo.addItem(str(g))
             self.group_combo.setVisible(True)
             self.group_label.setVisible(True)
@@ -281,10 +301,10 @@ class InteractivePlotWidget(QWidget):
             self.group_label.setVisible(False)
 
         # Replicate filter
-        if 'Replicate' in df.columns:
+        if "Replicate" in df.columns:
             self.replicate_combo.clear()
             self.replicate_combo.addItem("All Replicates")
-            for r in sorted(df['Replicate'].dropna().unique(), key=str):
+            for r in sorted(df["Replicate"].dropna().unique(), key=str):
                 self.replicate_combo.addItem(str(r))
             self.replicate_combo.setVisible(True)
             self.rep_label.setVisible(True)
@@ -293,7 +313,7 @@ class InteractivePlotWidget(QWidget):
             self.rep_label.setVisible(False)
 
         # PSM Type filter
-        if 'PSM_Type' in df.columns:
+        if "PSM_Type" in df.columns:
             self.psm_type_combo.clear()
             self.psm_type_combo.addItems(["All PSMs", "Target Only", "Decoy Only"])
             self.psm_type_combo.setVisible(True)
@@ -306,13 +326,13 @@ class InteractivePlotWidget(QWidget):
         self.color_by_combo.blockSignals(True)
         self.color_by_combo.clear()
         color_options = ["None"]
-        if 'Group' in df.columns:
+        if "Group" in df.columns:
             color_options.insert(0, "Group")
-        if 'PSM_Type' in df.columns:
+        if "PSM_Type" in df.columns:
             color_options.insert(len(color_options) - 1, "PSM Type")
         self.color_by_combo.addItems(color_options)
         # Default to Group if available
-        if 'Group' in df.columns:
+        if "Group" in df.columns:
             self.color_by_combo.setCurrentText("Group")
         self.color_by_combo.blockSignals(False)
 
@@ -328,29 +348,37 @@ class InteractivePlotWidget(QWidget):
 
         # Peptide substring
         pep_text = self.peptide_filter.text().strip()
-        if pep_text and 'Peptide' in df.columns:
-            mask &= df['Peptide'].str.contains(pep_text, case=False, na=False)
+        if pep_text and "Peptide" in df.columns:
+            mask &= df["Peptide"].str.contains(pep_text, case=False, na=False)
 
         # Protein substring
         prot_text = self.protein_filter.text().strip()
-        if prot_text and 'Protein' in df.columns:
-            mask &= df['Protein'].astype(str).str.contains(prot_text, case=False, na=False)
+        if prot_text and "Protein" in df.columns:
+            mask &= (
+                df["Protein"].astype(str).str.contains(prot_text, case=False, na=False)
+            )
 
         # Group dropdown
-        if self.group_combo.isVisible() and self.group_combo.currentText() != "All Groups":
-            mask &= df['Group'].astype(str) == self.group_combo.currentText()
+        if (
+            self.group_combo.isVisible()
+            and self.group_combo.currentText() != "All Groups"
+        ):
+            mask &= df["Group"].astype(str) == self.group_combo.currentText()
 
         # Replicate dropdown
-        if self.replicate_combo.isVisible() and self.replicate_combo.currentText() != "All Replicates":
-            mask &= df['Replicate'].astype(str) == self.replicate_combo.currentText()
+        if (
+            self.replicate_combo.isVisible()
+            and self.replicate_combo.currentText() != "All Replicates"
+        ):
+            mask &= df["Replicate"].astype(str) == self.replicate_combo.currentText()
 
         # PSM Type dropdown
         if self.psm_type_combo.isVisible():
             sel = self.psm_type_combo.currentText()
             if sel == "Target Only":
-                mask &= df['PSM_Type'] == 'Target'
+                mask &= df["PSM_Type"] == "Target"
             elif sel == "Decoy Only":
-                mask &= df['PSM_Type'] == 'Decoy'
+                mask &= df["PSM_Type"] == "Decoy"
 
         return df[mask]
 
@@ -363,14 +391,16 @@ class InteractivePlotWidget(QWidget):
             return
 
         if self.x_combo.count() == 0:
-            self.web_view.setHtml(self._placeholder_html(
-                "No plottable columns detected in dataset."))
+            self.web_view.setHtml(
+                self._placeholder_html("No plottable columns detected in dataset.")
+            )
             return
 
         filtered = self._apply_filters()
         if filtered.empty:
-            self.web_view.setHtml(self._placeholder_html(
-                "No data matches the current filters."))
+            self.web_view.setHtml(
+                self._placeholder_html("No data matches the current filters.")
+            )
             return
 
         is_histogram = self.plot_type_combo.currentText() == "Histogram"
@@ -385,21 +415,25 @@ class InteractivePlotWidget(QWidget):
         y_col = self.y_combo.currentText()
 
         plot_df = filtered.copy()
-        plot_df[x_col] = pd.to_numeric(plot_df[x_col], errors='coerce')
-        plot_df[y_col] = pd.to_numeric(plot_df[y_col], errors='coerce')
+        plot_df[x_col] = pd.to_numeric(plot_df[x_col], errors="coerce")
+        plot_df[y_col] = pd.to_numeric(plot_df[y_col], errors="coerce")
         plot_df = plot_df.dropna(subset=[x_col, y_col])
 
         if plot_df.empty:
-            self.web_view.setHtml(self._placeholder_html(
-                f"No numeric data for {x_col} / {y_col} after filtering."))
+            self.web_view.setHtml(
+                self._placeholder_html(
+                    f"No numeric data for {x_col} / {y_col} after filtering."
+                )
+            )
             return
 
         # Determine color and symbol encoding
         color_col, symbol_col = self._resolve_color_symbol(plot_df)
 
         # Hover info
-        hover_cols = [c for c in ['Peptide', 'Protein', 'Charge']
-                      if c in plot_df.columns]
+        hover_cols = [
+            c for c in ["Peptide", "Protein", "Charge"] if c in plot_df.columns
+        ]
 
         try:
             len_data = len(plot_df)
@@ -425,7 +459,7 @@ class InteractivePlotWidget(QWidget):
                     title=f"{y_col}  vs  {x_col}{sample_msg}",
                 )
                 # Change to scattergl type for GPU acceleration
-                fig.update_traces(type='scattergl', marker=dict(size=6, opacity=0.7))
+                fig.update_traces(type="scattergl", marker=dict(size=6, opacity=0.7))
             else:
                 fig = px.scatter(
                     plot_df,
@@ -446,12 +480,13 @@ class InteractivePlotWidget(QWidget):
         x_col = self.x_combo.currentText()
 
         plot_df = filtered.copy()
-        plot_df[x_col] = pd.to_numeric(plot_df[x_col], errors='coerce')
+        plot_df[x_col] = pd.to_numeric(plot_df[x_col], errors="coerce")
         plot_df = plot_df.dropna(subset=[x_col])
 
         if plot_df.empty:
-            self.web_view.setHtml(self._placeholder_html(
-                f"No numeric data for {x_col} after filtering."))
+            self.web_view.setHtml(
+                self._placeholder_html(f"No numeric data for {x_col} after filtering.")
+            )
             return
 
         nbins = self.bins_spin.value()
@@ -463,9 +498,9 @@ class InteractivePlotWidget(QWidget):
                 x=x_col,
                 color=color_col,
                 nbins=nbins,
-                barmode='overlay',
+                barmode="overlay",
                 title=f"Distribution of {x_col}",
-                labels={x_col: x_col, 'count': 'Count'},
+                labels={x_col: x_col, "count": "Count"},
             )
             fig.update_traces(opacity=0.75)
             self._apply_theme_and_render(fig)
@@ -476,13 +511,13 @@ class InteractivePlotWidget(QWidget):
         """Determine color and symbol columns based on user selections."""
         color_sel = self.color_by_combo.currentText()
         color_col = None
-        if color_sel == "Group" and 'Group' in plot_df.columns:
-            color_col = 'Group'
-        elif color_sel == "PSM Type" and 'PSM_Type' in plot_df.columns:
-            color_col = 'PSM_Type'
+        if color_sel == "Group" and "Group" in plot_df.columns:
+            color_col = "Group"
+        elif color_sel == "PSM Type" and "PSM_Type" in plot_df.columns:
+            color_col = "PSM_Type"
 
         # Symbol by Replicate (scatter only, but harmless if unused)
-        symbol_col = 'Replicate' if 'Replicate' in plot_df.columns else None
+        symbol_col = "Replicate" if "Replicate" in plot_df.columns else None
 
         return color_col, symbol_col
 
@@ -513,7 +548,7 @@ class InteractivePlotWidget(QWidget):
             margin=dict(l=60, r=30, t=50, b=50),
         )
 
-        html = fig.to_html(include_plotlyjs='cdn', full_html=True)
+        html = fig.to_html(include_plotlyjs="cdn", full_html=True)
         self.web_view.setHtml(html)
 
     # ------------------------------------------------------------------
@@ -521,9 +556,15 @@ class InteractivePlotWidget(QWidget):
     # ------------------------------------------------------------------
     def update_theme(self):
         """Re-apply styles and re-render the current plot."""
-        for combo in [self.x_combo, self.y_combo, self.group_combo,
-                      self.replicate_combo, self.psm_type_combo,
-                      self.plot_type_combo, self.color_by_combo]:
+        for combo in [
+            self.x_combo,
+            self.y_combo,
+            self.group_combo,
+            self.replicate_combo,
+            self.psm_type_combo,
+            self.plot_type_combo,
+            self.color_by_combo,
+        ]:
             combo.setStyleSheet(EditorConstants.get_combobox_style())
 
         for le in [self.peptide_filter, self.protein_filter]:
@@ -532,10 +573,19 @@ class InteractivePlotWidget(QWidget):
         self.bins_spin.setStyleSheet(EditorConstants.get_lineedit_style())
         self.sample_size_spin.setStyleSheet(EditorConstants.get_lineedit_style())
         self.update_btn.setStyleSheet(EditorConstants.get_pushbutton_style("primary"))
-        self.randomize_btn.setStyleSheet(EditorConstants.get_pushbutton_style("secondary"))
+        self.randomize_btn.setStyleSheet(
+            EditorConstants.get_pushbutton_style("secondary")
+        )
 
-        for lbl in [self.group_label, self.rep_label, self.psm_label,
-                    self.color_label, self.y_label, self.bins_label, self.sample_label]:
+        for lbl in [
+            self.group_label,
+            self.rep_label,
+            self.psm_label,
+            self.color_label,
+            self.y_label,
+            self.bins_label,
+            self.sample_label,
+        ]:
             lbl.setStyleSheet(self._label_style())
 
         for child in self.findChildren(QGroupBox):

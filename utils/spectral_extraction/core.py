@@ -12,15 +12,21 @@ from utils.resource_path import get_resource_path
 # --- .NET / RawFileReader setup ---
 import clr
 
-dll_base_path = Path(get_resource_path("RawFileReader-main/RawFileReader-main/Libs/Net471"))
+dll_base_path = Path(
+    get_resource_path("RawFileReader-main/RawFileReader-main/Libs/Net471")
+)
 
 clr.AddReference(str(dll_base_path / "ThermoFisher.CommonCore.Data.dll"))
 clr.AddReference(str(dll_base_path / "ThermoFisher.CommonCore.RawFileReader.dll"))
-clr.AddReference(str(dll_base_path / "ThermoFisher.CommonCore.BackgroundSubtraction.dll"))
-clr.AddReference(str(dll_base_path / "ThermoFisher.CommonCore.MassPrecisionEstimator.dll"))
+clr.AddReference(
+    str(dll_base_path / "ThermoFisher.CommonCore.BackgroundSubtraction.dll")
+)
+clr.AddReference(
+    str(dll_base_path / "ThermoFisher.CommonCore.MassPrecisionEstimator.dll")
+)
 
-from ThermoFisher.CommonCore.Data.Business import Device
-from ThermoFisher.CommonCore.RawFileReader import RawFileReaderAdapter
+from ThermoFisher.CommonCore.Data.Business import Device  # noqa: E402
+from ThermoFisher.CommonCore.RawFileReader import RawFileReaderAdapter  # noqa: E402
 
 
 class RawFileManager:
@@ -45,14 +51,14 @@ class RawFileManager:
 def create_error_result(scan_num, file_path, status):
     """Build a standardised error-result dict for a failed scan extraction."""
     return {
-        'index': scan_num,
-        'scan_number': scan_num,
-        'file_path': file_path,
-        'mz': None,
-        'intensity': None,
-        'header': None,
-        'status': status,
-        'num_peaks': 0,
+        "index": scan_num,
+        "scan_number": scan_num,
+        "file_path": file_path,
+        "mz": None,
+        "intensity": None,
+        "header": None,
+        "status": status,
+        "num_peaks": 0,
     }
 
 
@@ -65,8 +71,8 @@ def build_success_result(scan_num, file_path, mz, intensity, header, lightweight
                      If False, converts to float64 numpy arrays stored as tuples.
     """
     if lightweight:
-        mz_out = list(mz)
-        int_out = list(intensity)
+        mz_out = np.asarray(mz, dtype=np.float64)
+        int_out = np.asarray(intensity, dtype=np.float64)
         num_peaks = len(mz_out)
     else:
         mz_arr = np.array(mz, dtype=np.float64)
@@ -76,12 +82,12 @@ def build_success_result(scan_num, file_path, mz, intensity, header, lightweight
         num_peaks = len(mz_arr)
 
     return {
-        'index': scan_num,
-        'scan_number': scan_num,
-        'file_path': file_path,
-        'mz': mz_out,
-        'intensity': int_out,
-        'header': header,
-        'status': 'success',
-        'num_peaks': num_peaks,
+        "index": scan_num,
+        "scan_number": scan_num,
+        "file_path": file_path,
+        "mz": mz_out,
+        "intensity": int_out,
+        "header": header,
+        "status": "success",
+        "num_peaks": num_peaks,
     }

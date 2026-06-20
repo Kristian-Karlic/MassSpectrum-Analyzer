@@ -1,9 +1,17 @@
 """Dialog for customising per-ion-type text annotation visibility and colour."""
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QTableWidget, QTableWidgetItem,
-    QHeaderView, QPushButton, QHBoxLayout, QColorDialog,
-    QAbstractItemView, QStyledItemDelegate, QStyle,
+    QDialog,
+    QVBoxLayout,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QPushButton,
+    QHBoxLayout,
+    QColorDialog,
+    QAbstractItemView,
+    QStyledItemDelegate,
+    QStyle,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
@@ -50,6 +58,8 @@ ION_CATALOGUE = [
     ("ModNL", "Mod NL (*)", None),
     ("LabileLoss", "Labile Loss (~)", None),
     ("ModRM", "Remainder (^)", None),
+    # Glycan Y-ions
+    ("GlycanY", "Glycan Y (Y[…])", "#8B008B"),
     # Others
     ("Internal", "Internal", None),
     ("Custom", "Custom", None),
@@ -103,7 +113,7 @@ class AnnotationSettingsDialog(QDialog):
     """Table-based dialog for tweaking per-ion-type annotation visibility
     and peak colour."""
 
-    def __init__(self, viewer, parent=None):
+    def __init__(self, viewer, parent=None, glycan_compositions=None):
         super().__init__(parent)
         self.viewer = viewer
         self.setWindowTitle("Annotation Display Settings")
@@ -229,7 +239,6 @@ class AnnotationSettingsDialog(QDialog):
             clr_item = self.table.item(row, _COL_CLR)
             visible = vis_item.data(Qt.ItemDataRole.UserRole) is True
             colour = clr_item.data(Qt.ItemDataRole.UserRole)
-            # Only store overrides (non-default)
             entry = {}
             if not visible:
                 entry["visible"] = False
@@ -238,5 +247,9 @@ class AnnotationSettingsDialog(QDialog):
             if entry:
                 new_settings[key] = entry
         self.viewer.annotation_display_settings = new_settings
+
         self.viewer.plot_spectrum()
+        self.viewer.plot_error_ppm()
+        self.viewer._delayed_plot_data_fragments_only()
+
         self.accept()

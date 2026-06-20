@@ -1,16 +1,123 @@
-
-
 from PyQt6.QtWidgets import (
-    QLayout, QWidget, QSizePolicy,
-    QMenuBar, QMenu, QSpinBox, QLabel, QHBoxLayout
+    QLayout,
+    QWidget,
+    QSizePolicy,
+    QMenuBar,
+    QMenu,
+    QSpinBox,
+    QComboBox,
+    QCompleter,
+    QLabel,
+    QHBoxLayout,
 )
-from PyQt6.QtCore import Qt, QRect, QSize, QPoint, pyqtSignal
+from PyQt6.QtCore import Qt, QRect, QSize, QPoint, QStringListModel, pyqtSignal
 from PyQt6.QtGui import QAction, QFontMetrics, QCursor
 from typing import Dict, Callable, Optional
 from utils.style.style import EditorConstants
 
 
-def get_main_window(widget, stop_attr='extracted_spectral_data'):
+class NoScrollSpinBox(QSpinBox):
+    """QSpinBox that ignores mouse-wheel events to prevent accidental value changes."""
+
+    def wheelEvent(self, event):
+        event.ignore()
+
+
+class NoScrollComboBox(QComboBox):
+    """QComboBox that ignores mouse-wheel events when the popup is closed."""
+
+    def wheelEvent(self, event):
+        if self.view().isVisible():
+            super().wheelEvent(event)
+        else:
+            event.ignore()
+
+
+class SearchableComboBox(NoScrollComboBox):
+    """Editable QComboBox with substring-search completion and a data-carrying
+    ``item_selected`` signal.  Drop-in replacement for ``SearchableDropdown``
+    with a native Qt look-and-feel.
+
+    Usage::
+        combo.set_items([(display_text, data_object), ...])
+        combo.item_selected.connect(my_handler)   # receives data_object
+
+    After the user picks an item the text is cleared and the signal fires.
+    """
+
+    item_selected = pyqtSignal(object)
+
+    def __init__(self, placeholder: str = "", parent=None):
+        super().__init__(parent)
+        self.setEditable(True)
+        self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.lineEdit().setPlaceholderText(placeholder)
+        self._item_data: list[tuple[str, object]] = []
+
+        # Substring-matching completer
+        self._completer = QCompleter([], self)
+        self._completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self._completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        self.setCompleter(self._completer)
+
+        # Selection via the native dropdown arrow
+        self.activated.connect(self._on_activated)
+        # Selection via the completer popup
+        self._completer.activated.connect(self._on_completer_activated)
+
+    # ------------------------------------------------------------------
+    # Public API (matches SearchableDropdown)
+    # ------------------------------------------------------------------
+
+    def set_items(self, items: list[tuple[str, object]]) -> None:
+        """Replace all items.  *items* is a list of (display_text, data) pairs."""
+        self._item_data = list(items)
+        self.blockSignals(True)
+        self.clear()
+        display_texts = []
+        for display, _ in items:
+            self.addItem(display)
+            display_texts.append(display)
+        self.setCurrentIndex(-1)
+        self.lineEdit().clear()
+        self.blockSignals(False)
+        self._completer.setModel(QStringListModel(display_texts, self))
+
+    def clear_items(self) -> None:
+        """Remove all items without touching the line-edit text."""
+        self._item_data = []
+        self.blockSignals(True)
+        self.clear()
+        self.setCurrentIndex(-1)
+        self.blockSignals(False)
+        self._completer.setModel(QStringListModel([], self))
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _emit_for_text(self, text: str) -> None:
+        """Find the data for *text*, reset the widget, and emit ``item_selected``."""
+        data = next((d for t, d in self._item_data if t == text), None)
+        if data is None:
+            return
+        self.blockSignals(True)
+        self.setCurrentIndex(-1)
+        self.lineEdit().clear()
+        self.blockSignals(False)
+        self.item_selected.emit(data)
+
+    def _on_activated(self, index: int) -> None:
+        if 0 <= index < len(self._item_data):
+            text, _ = self._item_data[index]
+            self._emit_for_text(text)
+
+    def _on_completer_activated(self, text: str) -> None:
+        self._emit_for_text(text)
+
+
+def get_main_window(widget, stop_attr="extracted_spectral_data"):
     """Walk parent chain to find the main application window.
 
     Args:
@@ -137,7 +244,9 @@ class IonTile(QWidget):
             self._update_style()
             if not self.signalsBlocked():
                 self.stateChanged.emit(
-                    Qt.CheckState.Checked.value if checked else Qt.CheckState.Unchecked.value
+                    Qt.CheckState.Checked.value
+                    if checked
+                    else Qt.CheckState.Unchecked.value
                 )
 
     def checkState(self) -> Qt.CheckState:
@@ -212,7 +321,7 @@ class IonTile(QWidget):
         text_width = fm.horizontalAdvance(self._label.text())
         m = self.layout().contentsMargins()
         # Account for HTML text being wider than plain metric
-        if '<' in self._label.text():
+        if "<" in self._label.text():
             text_width = self._label.sizeHint().width()
         width = max(36, text_width + m.left() + m.right() + 4)
         height = max(28, fm.height() + m.top() + m.bottom() + 4)
@@ -221,21 +330,28 @@ class IonTile(QWidget):
 
 class WidgetFactory:
     """Utility class for creating common PyQt6 widgets with consistent styling"""
-    
+
     @staticmethod
-    def create_labeled_spinbox(label_text, min_value, max_value, default_value, parent, 
-                              spinbox_width=None, max_total_width=None):
+    def create_labeled_spinbox(
+        label_text,
+        min_value,
+        max_value,
+        default_value,
+        parent,
+        spinbox_width=None,
+        max_total_width=None,
+    ):
         """Create a labeled spinbox that fits within container constraints with proper sizing"""
         layout = QHBoxLayout()
-        layout.setSpacing(8)  
-        
+        layout.setSpacing(8)
+
         # Create label with constrained width
         label = QLabel(label_text)
-        label.setWordWrap(True)  
+        label.setWordWrap(True)
         if max_total_width:
-            label_width = min(120, max_total_width // 2) 
+            label_width = min(120, max_total_width // 2)
             label.setMaximumWidth(label_width)
-        
+
         # CONTROL LABEL TEXT SIZE HERE:
         label.setStyleSheet(f"""
             QLabel {{
@@ -244,20 +360,20 @@ class WidgetFactory:
                 {EditorConstants.get_font_string()}
             }}
         """)
-        
+
         # Set minimum height for label to match spinbox
         label.setMinimumHeight(EditorConstants.EDITOR_MIN_HEIGHT())
         layout.addWidget(label)
-        
+
         # Create spinbox with better sizing
-        spinbox = QSpinBox(parent)
+        spinbox = NoScrollSpinBox(parent)
         spinbox.setMinimum(min_value)
         spinbox.setMaximum(max_value)
         spinbox.setValue(default_value)
-        
+
         # CONTROL SPINBOX SIZE HERE:
         spinbox.setMinimumHeight(32)  # Change spinbox height
-        
+
         if spinbox_width:
             spinbox.setMinimumWidth(min(50, spinbox_width))
             spinbox.setMaximumWidth(spinbox_width)
@@ -277,28 +393,30 @@ class WidgetFactory:
             }}
         """
         spinbox.setStyleSheet(custom_style)
-        
+
         layout.addWidget(spinbox)
         layout.addStretch()
-        
+
         return layout, spinbox
-    
+
     @staticmethod
     def create_checkbox_grid(
-            parent,
-            parent_layout: QLayout,
-            labels: list[str],
-            columns: int = 6,
-            max_width: int = None,
-            label_formatter: Optional[Callable[[str], str]] = None
-        ) -> Dict[str, "IonTile"]:
+        parent,
+        parent_layout: QLayout,
+        labels: list[str],
+        columns: int = 6,
+        max_width: int = None,
+        label_formatter: Optional[Callable[[str], str]] = None,
+    ) -> Dict[str, "IonTile"]:
         """
         Creates a flow layout of IonTile widgets that fits within the container width.
         Optionally formats the visible label text (e.g., add chemical subscripts).
         Returns a dict keyed by the original (raw) label.
         """
         grid_widget = QWidget()
-        grid_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        grid_widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
         if max_width:
             grid_widget.setMaximumWidth(max_width)
 
@@ -312,32 +430,29 @@ class WidgetFactory:
 
             tile = IonTile(display_label, parent=grid_widget)
             tile.setToolTip(raw_label)
-            tile.setProperty('raw_label', raw_label)
+            tile.setProperty("raw_label", raw_label)
 
             tiles[raw_label] = tile
             flow.addWidget(tile)
 
         parent_layout.addWidget(grid_widget)
         return tiles
-    
+
     @staticmethod
     def create_menu_action(
-            parent,
-            menu: QMenuBar | QMenu,
-            text: str,
-            tooltip: str,
-            callback: Callable) -> QAction:
+        parent, menu: QMenuBar | QMenu, text: str, tooltip: str, callback: Callable
+    ) -> QAction:
         """
         Creates a QAction with given text, tooltip, and callback,
         and adds it to the specified menu.
-        
+
         Args:
             parent: Parent widget for the QAction
             menu: QMenuBar or QMenu to add the action to
             text: Text to display for the action
             tooltip: Tooltip text for the action
             callback: Function to call when action is triggered
-            
+
         Returns:
             QAction: The created menu action
         """
@@ -346,4 +461,3 @@ class WidgetFactory:
         action.triggered.connect(callback)
         menu.addAction(action)
         return action
-                

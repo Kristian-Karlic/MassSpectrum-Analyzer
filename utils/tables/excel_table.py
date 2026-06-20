@@ -1,5 +1,9 @@
 from PyQt6.QtWidgets import (
-    QTableWidget, QTableWidgetItem, QAbstractItemView, QApplication, QLineEdit,
+    QTableWidget,
+    QTableWidgetItem,
+    QAbstractItemView,
+    QApplication,
+    QLineEdit,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeySequence
@@ -31,7 +35,10 @@ class ExcelLikeTableWidget(QTableWidget):
             self._copy_selection()
         elif event.matches(QKeySequence.StandardKey.Paste):
             self._paste_clipboard()
-        elif event.key() == Qt.Key.Key_D and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+        elif (
+            event.key() == Qt.Key.Key_D
+            and event.modifiers() == Qt.KeyboardModifier.ControlModifier
+        ):
             self._fill_down()
         elif event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             self._clear_selection()
@@ -59,11 +66,11 @@ class ExcelLikeTableWidget(QTableWidget):
             row_data = []
             for col in range(min_col, max_col + 1):
                 item = self.item(row, col)
-                row_data.append(item.text() if item else '')
-            lines.append('\t'.join(row_data))
+                row_data.append(item.text() if item else "")
+            lines.append("\t".join(row_data))
 
         clipboard = QApplication.clipboard()
-        clipboard.setText('\n'.join(lines))
+        clipboard.setText("\n".join(lines))
 
     def _paste_clipboard(self):
         """Paste clipboard text into table starting at the top-left selected cell.
@@ -77,8 +84,8 @@ class ExcelLikeTableWidget(QTableWidget):
             return
 
         # Parse clipboard rows/cols
-        paste_rows = text.rstrip('\n').split('\n')
-        paste_data = [row.split('\t') for row in paste_rows]
+        paste_rows = text.rstrip("\n").split("\n")
+        paste_data = [row.split("\t") for row in paste_rows]
 
         sel_range = self._get_selected_range()
         if not sel_range:
@@ -130,7 +137,7 @@ class ExcelLikeTableWidget(QTableWidget):
             if col in self._readonly_columns:
                 continue
             item = self.item(min_row, col)
-            source_values[col] = item.text() if item else ''
+            source_values[col] = item.text() if item else ""
 
         # Fill into remaining rows
         for row in range(min_row + 1, max_row + 1):
@@ -147,7 +154,7 @@ class ExcelLikeTableWidget(QTableWidget):
             if idx.column() not in self._readonly_columns:
                 item = self.item(idx.row(), idx.column())
                 if item:
-                    item.setText('')
+                    item.setText("")
 
 
 def create_search_bar(table, parent=None, placeholder="Search..."):

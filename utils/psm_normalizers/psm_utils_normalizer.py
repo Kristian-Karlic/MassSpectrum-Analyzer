@@ -30,8 +30,9 @@ still reported to the experiment manager so the user can supply masses.
 from __future__ import annotations
 
 import importlib
+import logging
 import re
-from typing import List, Tuple, Optional, Set
+from typing import Dict, List, Tuple, Optional, Set
 
 import pandas as pd
 
@@ -42,12 +43,15 @@ from .base_normalizer import PSMNormalizer
 # ---------------------------------------------------------------------------
 
 # Matches the content inside one pair of square brackets (non-nested)
-_BRACKET_RE = re.compile(r'\[([^\[\]]*)\]')
+_BRACKET_RE = re.compile(r"\[([^\[\]]*)\]")
 
 
 # Default terminal group masses (monoisotopic)
 _DEFAULT_NTERM_MASS = 1.00782503207  # H
 _DEFAULT_CTERM_MASS = 18.01056468407  # OH2
+
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_proforma_string(
@@ -78,8 +82,8 @@ def _parse_proforma_string(
     """
     # --- split charge ---
     charge: Optional[int] = None
-    if '/' in pf_str:
-        seq_part, charge_str = pf_str.rsplit('/', 1)
+    if "/" in pf_str:
+        seq_part, charge_str = pf_str.rsplit("/", 1)
         try:
             charge = int(charge_str.strip())
         except ValueError:
@@ -103,8 +107,8 @@ def _parse_proforma_string(
             bare_chars.append(ch)
             i += 1
             # Consume every bracket immediately following this residue
-            while i < len(seq_part) and seq_part[i] == '[':
-                close = seq_part.find(']', i)
+            while i < len(seq_part) and seq_part[i] == "[":
+                close = seq_part.find("]", i)
                 if close == -1:
                     break
                 mod_content = seq_part[i + 1 : close]
@@ -113,10 +117,10 @@ def _parse_proforma_string(
                     raw_mods.append((mass, position))
                 i = close + 1
 
-        elif ch == '-' and i + 1 < len(seq_part) and seq_part[i + 1] == '[':
+        elif ch == "-" and i + 1 < len(seq_part) and seq_part[i + 1] == "[":
             # C-terminal modification: "-[mod]" after the last residue
             i += 1  # skip the '-'
-            close = seq_part.find(']', i)
+            close = seq_part.find("]", i)
             if close == -1:
                 i += 1
                 continue
@@ -126,9 +130,9 @@ def _parse_proforma_string(
                 raw_mods.append((mass, -1))  # -1 = C-terminal sentinel
             i = close + 1
 
-        elif ch == '[':
+        elif ch == "[":
             # Bracket before any residue → N-terminal modification
-            close = seq_part.find(']', i)
+            close = seq_part.find("]", i)
             if close == -1:
                 i += 1
                 continue
@@ -138,7 +142,7 @@ def _parse_proforma_string(
                 raw_mods.append((mass, 0))  # 0 = N-terminal sentinel
             i = close + 1
             # Consume the '-' separator that follows n-term brackets, e.g. "[mod]-SEQ"
-            if i < len(seq_part) and seq_part[i] == '-':
+            if i < len(seq_part) and seq_part[i] == "-":
                 i += 1
 
         else:
@@ -162,7 +166,7 @@ def _parse_proforma_string(
         else:
             parsed_mods.append((mass, pos))
 
-    return ''.join(bare_chars), parsed_mods, charge
+    return "".join(bare_chars), parsed_mods, charge
 
 
 def _resolve_mod_mass(mod_content: str) -> Optional[float]:
@@ -176,7 +180,7 @@ def _resolve_mod_mass(mod_content: str) -> Optional[float]:
     content = mod_content.strip()
 
     # 1. Mass-shift notation
-    if content and content[0] in ('+', '-'):
+    if content and content[0] in ("+", "-"):
         try:
             return float(content)
         except ValueError:
@@ -189,7 +193,7 @@ def _resolve_mod_mass(mod_content: str) -> Optional[float]:
         pass
 
     # 3. UNIMOD: prefix  (psm_utils uses this for named lookups)
-    if content.upper().startswith('UNIMOD:'):
+    if content.upper().startswith("UNIMOD:"):
         return _unimod_mass(content[7:])
 
     # 4. Named modification – try psm_utils modification database
@@ -200,57 +204,60 @@ def _unimod_mass(unimod_id: str) -> Optional[float]:
     """Look up monoisotopic mass by UNIMOD accession number."""
     try:
         from psm_utils.proforma.proforma import Modification
-        mod = Modification(f'UNIMOD:{unimod_id}')
+
+        mod = Modification(f"UNIMOD:{unimod_id}")
         return float(mod.mass)
     except Exception:
         pass
     # Fallback via pyteomics if available
     try:
         from pyteomics import mass as pyteomics_mass
+
         db = pyteomics_mass.Unimod()
         entry = db.by_id(int(unimod_id))
         if entry:
-            return float(entry['mono_mass'])
+            return float(entry["mono_mass"])
     except Exception:
         pass
     return None
 
 
-# Cache for named-mod lookups to avoid repeated imports
+# Cache for named-mod lookups to avoid repeated imports (capped to prevent unbounded growth)
 _NAMED_MOD_CACHE: dict[str, Optional[float]] = {}
+_NAMED_MOD_CACHE_MAX = 512
 
 # Minimal built-in fallback table for the most common named modifications
 _COMMON_NAMED_MODS: dict[str, float] = {
-    'carbamidomethyl':   57.02146,
-    'carbamidomethylation': 57.02146,
-    'oxidation':         15.99491,
-    'phospho':           79.96633,
-    'phosphorylation':   79.96633,
-    'acetyl':            42.01057,
-    'acetylation':       42.01057,
-    'methylation':       14.01565,
-    'methyl':            14.01565,
-    'dimethyl':          28.03130,
-    'trimethyl':         42.04695,
-    'deamidation':        0.98402,
-    'deamidated':         0.98402,
-    'pyro-glu':         -17.02655,
-    'pyro_glu':         -17.02655,
-    'gln->pyro-glu':    -17.02655,
-    'glu->pyro-glu':    -18.01056,
-    'ammonia-loss':     -17.02655,
-    'water-loss':       -18.01056,
-    'tmt6plex':         229.16293,
-    'tmt':              229.16293,
-    'itraq4plex':       144.10207,
-    'itraq8plex':       304.20536,
-    'propionamide':      71.03711,
-    'sulfo':             79.95681,
-    'sulfation':         79.95681,
-    'ubiquitination':   114.04293,
-    'gg':               114.04293,  # GlyGly tag
-    'nhs-lc-biotin':    339.16175,
-    'formylation':       27.99491,
+    "carbamidomethyl": 57.02146,
+    "carbamidomethylation": 57.02146,
+    "oxidation": 15.99491,
+    "phospho": 79.96633,
+    "phosphorylation": 79.96633,
+    "acetyl": 42.01057,
+    "acetylation": 42.01057,
+    "methylation": 14.01565,
+    "methyl": 14.01565,
+    "dimethyl": 28.03130,
+    "trimethyl": 42.04695,
+    "deamidation": 0.98402,
+    "deamidated": 0.98402,
+    "pyro-glu": -17.02655,
+    "pyro_glu": -17.02655,
+    "gln->pyro-glu": -17.02655,
+    "glu->pyro-glu": -18.01056,
+    "ammonia-loss": -17.02655,
+    "water-loss": -18.01056,
+    "tmt6plex": 229.16293,
+    "tmt": 229.16293,
+    "itraq4plex": 144.10207,
+    "itraq8plex": 304.20536,
+    "propionamide": 71.03711,
+    "sulfo": 79.95681,
+    "sulfation": 79.95681,
+    "ubiquitination": 114.04293,
+    "gg": 114.04293,  # GlyGly tag
+    "nhs-lc-biotin": 339.16175,
+    "formylation": 27.99491,
 }
 
 
@@ -259,6 +266,10 @@ def _named_mod_mass(name: str) -> Optional[float]:
     key = name.lower()
     if key in _NAMED_MOD_CACHE:
         return _NAMED_MOD_CACHE[key]
+
+    # Evict oldest entry if cache is at capacity
+    if len(_NAMED_MOD_CACHE) >= _NAMED_MOD_CACHE_MAX:
+        _NAMED_MOD_CACHE.pop(next(iter(_NAMED_MOD_CACHE)))
 
     # 1. Check built-in table
     if key in _COMMON_NAMED_MODS:
@@ -269,6 +280,7 @@ def _named_mod_mass(name: str) -> Optional[float]:
     # 2. Try psm_utils Modification object
     try:
         from psm_utils.proforma.proforma import Modification
+
         mod = Modification(name)
         mass = float(mod.mass)
         _NAMED_MOD_CACHE[key] = mass
@@ -279,10 +291,11 @@ def _named_mod_mass(name: str) -> Optional[float]:
     # 3. Try pyteomics Unimod by name
     try:
         from pyteomics import mass as pyteomics_mass
+
         db = pyteomics_mass.Unimod()
         hit = db.by_title(name)
         if hit:
-            mass = float(hit[0]['mono_mass'])
+            mass = float(hit[0]["mono_mass"])
             _NAMED_MOD_CACHE[key] = mass
             return mass
     except Exception:
@@ -299,9 +312,9 @@ def _collect_named_mods(pf_str: str) -> Set[str]:
         content = content.strip()
         if not content:
             continue
-        if content[0] in ('+', '-'):
+        if content[0] in ("+", "-"):
             continue  # mass-shift
-        if content.upper().startswith('UNIMOD:'):
+        if content.upper().startswith("UNIMOD:"):
             continue
         try:
             float(content)
@@ -318,11 +331,11 @@ def _collect_named_mods(pf_str: str) -> Set[str]:
 # ---------------------------------------------------------------------------
 
 # Regex for NativeID "controllerType=0 controllerNumber=1 scan=12345"
-_NATIVEID_SCAN_RE = re.compile(r'scan[=:](\d+)', re.IGNORECASE)
+_NATIVEID_SCAN_RE = re.compile(r"scan[=:](\d+)", re.IGNORECASE)
 
 # Regex for pepXML-style "basename.startScan.endScan.charge"
 # The last three dot-separated tokens must all be digits.
-_PEPXML_SPEC_RE = re.compile(r'^(.+?)\.(\d+)\.(\d+)\.(\d+)$')
+_PEPXML_SPEC_RE = re.compile(r"^(.+?)\.(\d+)\.(\d+)\.(\d+)$")
 
 
 def _parse_spectrum_id(spec_id: str) -> Tuple[str, str]:
@@ -345,32 +358,32 @@ def _parse_spectrum_id(spec_id: str) -> Tuple[str, str]:
         if the identifier does not encode a run name.
     """
     spec_id = spec_id.strip()
-    if not spec_id or spec_id.lower() in ('nan', 'none'):
-        return '', ''
+    if not spec_id or spec_id.lower() in ("nan", "none"):
+        return "", ""
 
     # 1. Plain integer
     if spec_id.isdigit():
-        return spec_id.lstrip('0') or '0', ''
+        return spec_id.lstrip("0") or "0", ""
 
     # 2. NativeID / "scan=N" style
     m = _NATIVEID_SCAN_RE.search(spec_id)
     if m:
-        return m.group(1).lstrip('0') or '0', ''
+        return m.group(1).lstrip("0") or "0", ""
 
     # 3. pepXML "basename.startScan.endScan.charge"
     m = _PEPXML_SPEC_RE.match(spec_id)
     if m:
         run_name = m.group(1)
-        scan = m.group(2).lstrip('0') or '0'
+        scan = m.group(2).lstrip("0") or "0"
         # Strip common extensions from the run name portion
-        for ext in ('.raw', '.mzml', '.mzML', '.d', '.mgf'):
+        for ext in (".raw", ".mzml", ".mzML", ".d", ".mgf"):
             if run_name.lower().endswith(ext.lower()):
-                run_name = run_name[:len(run_name) - len(ext)]
+                run_name = run_name[: len(run_name) - len(ext)]
                 break
         return scan, run_name
 
     # 4. Fallback: return as-is
-    return spec_id, ''
+    return spec_id, ""
 
 
 # ---------------------------------------------------------------------------
@@ -382,13 +395,207 @@ def _parse_spectrum_id(spec_id: str) -> Tuple[str, str]:
 #: because hyperscore is a direct match-quality metric used for spectral
 #: annotation, whereas expect is a statistical significance measure.
 _PEPXML_SCORE_PRIORITY = [
-    "hyperscore",    # MSFragger / X!Tandem
-    "xcorr",         # Comet / SEQUEST
-    "expect",        # X!Tandem E-value (fallback)
-    "EValue",        # MS-GF+
-    "SpecEValue",    # MS-GF+ spectral E-value
-    "delta_dot",     # SpectraST
+    "hyperscore",  # MSFragger / X!Tandem
+    "xcorr",  # Comet / SEQUEST
+    "expect",  # X!Tandem E-value (fallback)
+    "EValue",  # MS-GF+
+    "SpecEValue",  # MS-GF+ spectral E-value
+    "delta_dot",  # SpectraST
 ]
+
+
+# ---------------------------------------------------------------------------
+# pepXML ptm_result extraction
+# ---------------------------------------------------------------------------
+
+
+def _extract_ptm_results(
+    file_path: str,
+) -> Dict[Tuple[str, str], Dict]:
+    """Second-pass extraction of ``<ptm_result>`` data from a pepXML file.
+
+    Returns a lookup keyed by ``(scan_number_str, peptide_sequence)`` so
+    results can be matched against the normalised DataFrame rows.
+
+    Each value is ``{'ptm_mass': float, 'position': int | None}``.
+    *position* is ``None`` when localization is empty (Case 3).
+    """
+    try:
+        from pyteomics import pepxml as _pepxml
+    except ImportError:
+        return {}
+
+    result: Dict[Tuple[str, str], Dict] = {}
+    try:
+        with _pepxml.read(file_path) as reader:
+            for spectrum_query in reader:
+                if "search_hit" not in spectrum_query:
+                    continue
+                spectrum_id = spectrum_query.get("spectrum", "")
+                scan_number, _ = _parse_spectrum_id(spectrum_id)
+
+                for search_hit in spectrum_query["search_hit"]:
+                    ptm_data = _find_ptm_result(search_hit)
+                    if ptm_data is None:
+                        continue
+
+                    ptm_mass_str = str(ptm_data.get("ptm_mass", "0"))
+                    try:
+                        ptm_mass = float(ptm_mass_str)
+                    except (ValueError, TypeError):
+                        continue
+                    if abs(ptm_mass) < 1e-6:
+                        continue
+
+                    loc_raw = str(ptm_data.get("localization", "")).strip()
+                    position = _parse_ptm_localization(loc_raw)
+
+                    peptide = search_hit.get("peptide", "")
+                    key = (scan_number, peptide)
+                    result[key] = {"ptm_mass": round(ptm_mass, 6), "position": position}
+    except Exception as exc:
+        logger.warning(f"ptm_result extraction failed for {file_path}: {exc}")
+
+    return result
+
+
+def _find_ptm_result(search_hit: dict) -> Optional[dict]:
+    """Locate ptm_result data in a search_hit dict (pyteomics output).
+
+    Checks both direct children and ``analysis_result`` wrappers.
+    """
+    if "ptm_result" in search_hit:
+        return search_hit["ptm_result"]
+    for ar in search_hit.get("analysis_result", []):
+        if isinstance(ar, dict) and "ptm_result" in ar:
+            return ar["ptm_result"]
+    return None
+
+
+def _parse_ptm_localization(loc_raw: str) -> Optional[int]:
+    """Parse the ``localization`` attribute from a ptm_result element.
+
+    Returns an integer position (1-based) or ``None`` if empty.
+    For multi-site strings like ``"20_23"``, the first site is used.
+    """
+    if not loc_raw:
+        return None
+    # Multi-site: take first
+    if "_" in loc_raw:
+        loc_raw = loc_raw.split("_")[0]
+    try:
+        pos = int(loc_raw)
+        return pos if pos > 0 else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _extract_pepxml_extra(
+    file_path: str,
+) -> Dict[Tuple[str, str], Dict]:
+    """Second-pass extraction of extra pepXML attributes via ElementTree.
+
+    pyteomics does not expose ``peptide_prev_aa``, ``peptide_next_aa``,
+    or ``uncalibrated_precursor_neutral_mass``, so we parse the raw XML.
+
+    Returns a lookup keyed by ``(scan_number_str, peptide_sequence)`` with
+    values containing prev_aa, next_aa, uncalibrated_precursor_neutral_mass,
+    precursor_neutral_mass, and num_missed_cleavages.
+    """
+    import xml.etree.ElementTree as ET
+
+    result: Dict[Tuple[str, str], Dict] = {}
+    try:
+        # Track current spectrum_query attributes across events
+        sq_attrib: Dict = {}
+        for event, elem in ET.iterparse(file_path, events=["end"]):
+            tag = elem.tag
+            # Strip namespace if present
+            if "}" in tag:
+                tag = tag.rsplit("}", 1)[1]
+
+            if tag == "spectrum_query":
+                sq_attrib = dict(elem.attrib)
+                spectrum_id = sq_attrib.get("spectrum", "")
+                scan_number, _ = _parse_spectrum_id(spectrum_id)
+
+                uncal_mass = sq_attrib.get("uncalibrated_precursor_neutral_mass", "")
+                precursor_mass = sq_attrib.get("precursor_neutral_mass", "")
+
+                # Find all search_hit children (may be nested under search_result)
+                for sh in elem.iter():
+                    sh_tag = sh.tag
+                    if "}" in sh_tag:
+                        sh_tag = sh_tag.rsplit("}", 1)[1]
+                    if sh_tag != "search_hit":
+                        continue
+
+                    peptide = sh.attrib.get("peptide", "")
+
+                    # Extract nextscore from <search_score> children
+                    nextscore = ""
+                    for score_elem in sh.iter():
+                        score_tag = score_elem.tag
+                        if "}" in score_tag:
+                            score_tag = score_tag.rsplit("}", 1)[1]
+                        if (
+                            score_tag == "search_score"
+                            and score_elem.attrib.get("name") == "nextscore"
+                        ):
+                            nextscore = score_elem.attrib.get("value", "")
+                            break
+
+                    key = (scan_number, peptide)
+                    result[key] = {
+                        "prev_aa": sh.attrib.get("peptide_prev_aa", ""),
+                        "next_aa": sh.attrib.get("peptide_next_aa", ""),
+                        "uncalibrated_precursor_neutral_mass": uncal_mass,
+                        "precursor_neutral_mass": precursor_mass,
+                        "num_missed_cleavages": sh.attrib.get(
+                            "num_missed_cleavages", ""
+                        ),
+                        "nextscore": nextscore,
+                    }
+
+                # Free memory for large files
+                elem.clear()
+
+    except Exception as exc:
+        logger.warning(f"pepXML extra-field extraction failed for {file_path}: {exc}")
+
+    return result
+
+
+def _build_modified_peptide(bare_seq: str, parsed_mods: List[Tuple[float, int]]) -> str:
+    """Build a ProForma-style display string from sequence + modifications.
+
+    Parameters
+    ----------
+    bare_seq : str
+        Unmodified amino-acid sequence.
+    parsed_mods : list of (mass, position)
+        1-indexed modification positions.
+
+    Returns
+    -------
+    str
+        e.g. ``"PEPTM[+15.9949]IDE"``
+    """
+    if not parsed_mods:
+        return bare_seq
+
+    # Group mods by position
+    by_pos: Dict[int, List[float]] = {}
+    for mass, pos in parsed_mods:
+        by_pos.setdefault(pos, []).append(mass)
+
+    parts: List[str] = []
+    for i, aa in enumerate(bare_seq, start=1):
+        parts.append(aa)
+        if i in by_pos:
+            for m in by_pos[i]:
+                parts.append(f"[{m:+.6f}]")
+    return "".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -397,24 +604,24 @@ _PEPXML_SCORE_PRIORITY = [
 
 #: Maps format key → (psm_utils module path, reader class name)
 READER_REGISTRY: dict[str, tuple[str, str]] = {
-    'PEAKS':      ('psm_utils.io.peaks',      'PEAKSReader'),
-    'Sage':       ('psm_utils.io.sage',        'SageReader'),
-    'Percolator': ('psm_utils.io.percolator',  'PercolatorReader'),
-    'mzIdentML':  ('psm_utils.io.mzidentml',   'MzIdentMLReader'),
-    'XTandem':    ('psm_utils.io.xtandem',     'XTandemReader'),
-    'IdXML':      ('psm_utils.io.idxml',       'IdXMLReader'),
-    'pepXML':     ('psm_utils.io.pepxml',      'PepXMLReader'),
+    "PEAKS": ("psm_utils.io.peaks", "PEAKSReader"),
+    "Sage": ("psm_utils.io.sage", "SageReader"),
+    "Percolator": ("psm_utils.io.percolator", "PercolatorReader"),
+    "mzIdentML": ("psm_utils.io.mzidentml", "MzIdentMLReader"),
+    "XTandem": ("psm_utils.io.xtandem", "XTandemReader"),
+    "IdXML": ("psm_utils.io.idxml", "IdXMLReader"),
+    "pepXML": ("psm_utils.io.pepxml", "PepXMLReader"),
 }
 
 #: Human-readable labels for the format selector dialog
 FORMAT_LABELS: dict[str, str] = {
-    'PEAKS':      'PEAKS Studio (CSV)',
-    'Sage':       'Sage search engine (TSV)',
-    'Percolator': 'Percolator (pin / pout)',
-    'mzIdentML':  'mzIdentML (.mzid)',
-    'XTandem':    'X!Tandem (XML)',
-    'IdXML':      'OpenMS idXML',
-    'pepXML':     'pepXML (.pep.xml / .pepxml)',
+    "PEAKS": "PEAKS Studio (CSV)",
+    "Sage": "Sage search engine (TSV)",
+    "Percolator": "Percolator (pin / pout)",
+    "mzIdentML": "mzIdentML (.mzid)",
+    "XTandem": "X!Tandem (XML)",
+    "IdXML": "OpenMS idXML",
+    "pepXML": "pepXML (.pep.xml / .pepxml)",
 }
 
 
@@ -435,6 +642,7 @@ def available_formats() -> list[str]:
 # Normalizer
 # ---------------------------------------------------------------------------
 
+
 class PSMUtilsNormalizer(PSMNormalizer):
     """Normalizer backed by a psm_utils reader for any supported format."""
 
@@ -446,6 +654,9 @@ class PSMUtilsNormalizer(PSMNormalizer):
             )
         self.format_key = format_key
         self.source_file_path = source_file_path
+        self.ptm_localization_prefs: Dict[float, Optional[str]] = {}
+        self._ptm_result_cache: Optional[Dict[Tuple[str, str], Dict]] = None
+        self._psms_cache: Optional[list] = None
 
     # ------------------------------------------------------------------
     # PSMNormalizer interface
@@ -458,7 +669,12 @@ class PSMUtilsNormalizer(PSMNormalizer):
         """Read the file via psm_utils and return the internal column schema."""
         psms = self._read_psms()
         rows = [self._psm_to_row(psm) for psm in psms]
-        result = pd.DataFrame(rows, columns=PSMNormalizer.INTERNAL_COLUMNS)
+        result = pd.DataFrame(
+            rows, columns=PSMNormalizer.INTERNAL_COLUMNS + ["Retention"]
+        )
+        if self.format_key == "pepXML":
+            result = self._merge_pepxml_extra(result)
+            result = self._merge_ptm_results(result)
         self.validate_output(result)
         return result
 
@@ -475,17 +691,182 @@ class PSMUtilsNormalizer(PSMNormalizer):
 
     def extract_spectrum_files(self, df=None) -> set[str]:
         """Return unique run names (raw file stems) from the file."""
+        if self.format_key == "pepXML":
+            return self._fast_pepxml_run_names()
         try:
             psms = self._read_psms()
             return {psm.run for psm in psms if psm.run}
         except Exception:
             return set()
 
+    def _fast_pepxml_run_names(self) -> set[str]:
+        """Read only the first spectrum_query element to extract the run name."""
+        import xml.etree.ElementTree as ET
+        run_names: set[str] = set()
+        try:
+            for _event, elem in ET.iterparse(self.source_file_path, events=["start"]):
+                tag = elem.tag
+                if "}" in tag:
+                    tag = tag.rsplit("}", 1)[1]
+                if tag == "spectrum_query":
+                    spectrum = elem.attrib.get("spectrum", "")
+                    if spectrum:
+                        _, run_name = _parse_spectrum_id(spectrum)
+                        if run_name:
+                            run_names.add(run_name)
+                            break
+        except Exception:
+            pass
+        return run_names
+
+    # ------------------------------------------------------------------
+    # Extra pepXML field support (prev/next AA, masses, missed cleavages)
+    # ------------------------------------------------------------------
+
+    def _merge_pepxml_extra(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Merge prev/next AA and extra pepXML fields from a second-pass read."""
+        extra = _extract_pepxml_extra(self.source_file_path)
+        if not extra:
+            return df
+
+        _miss: dict = {}
+        keys = list(zip(df["index"].astype(str), df["Peptide"].astype(str)))
+
+        df = df.copy()
+        df["Prev AA"] = [extra.get(k, _miss).get("prev_aa", "") for k in keys]
+        df["Next AA"] = [extra.get(k, _miss).get("next_aa", "") for k in keys]
+        df["Uncalibrated Precursor Mass"] = [
+            extra.get(k, _miss).get("uncalibrated_precursor_neutral_mass", "") for k in keys
+        ]
+        df["Precursor Neutral Mass"] = [
+            extra.get(k, _miss).get("precursor_neutral_mass", "") for k in keys
+        ]
+        df["Missed Cleavages"] = [
+            extra.get(k, _miss).get("num_missed_cleavages", "") for k in keys
+        ]
+
+        nextscore_vals = [extra.get(k, _miss).get("nextscore", "") for k in keys]
+        nextscore_series = pd.to_numeric(pd.Series(nextscore_vals), errors="coerce")
+        valid = nextscore_series.notna()
+        if valid.any():
+            df.loc[valid, "Nextscore"] = nextscore_series[valid].values
+            hyperscore_series = pd.to_numeric(df["Hyperscore"], errors="coerce")
+            df.loc[valid, "Delta Hyperscore"] = (
+                hyperscore_series[valid].values - nextscore_series[valid].values
+            )
+
+        return df
+
+    # ------------------------------------------------------------------
+    # ptm_result support (pepXML only)
+    # ------------------------------------------------------------------
+
+    def pre_scan_ptm_results(self) -> Dict[float, int]:
+        """Pre-scan for unlocalized ptm_result masses in the pepXML file.
+
+        Returns a dict mapping each unlocalized ``ptm_mass`` to the count
+        of PSMs it affects.  Returns an empty dict for non-pepXML formats
+        or when no unlocalized masses are found.
+        """
+        if self.format_key != "pepXML":
+            return {}
+        self._ptm_result_cache = _extract_ptm_results(self.source_file_path)
+        counts: Dict[float, int] = {}
+        for entry in self._ptm_result_cache.values():
+            if entry["position"] is None:
+                m = entry["ptm_mass"]
+                counts[m] = counts.get(m, 0) + 1
+        return counts
+
+    def set_ptm_localization_prefs(self, prefs: Dict[float, Optional[str]]):
+        """Store user preferences for handling unlocalized ptm_result masses."""
+        self.ptm_localization_prefs = prefs
+
+    def _merge_ptm_results(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Merge ptm_result modifications into the normalised DataFrame.
+
+        For each row, looks up ptm_result data by (scan_number, peptide).
+        If the ptm_result has a known position, the modification is appended.
+        If the position is unknown, user preferences determine the target
+        amino acid or whether to drop the row entirely.
+        """
+        if self._ptm_result_cache is None:
+            self._ptm_result_cache = _extract_ptm_results(self.source_file_path)
+
+        ptm_data = self._ptm_result_cache
+        if not ptm_data:
+            return df
+
+        rows_to_drop: List[int] = []
+
+        col_idx = {col: pos for pos, col in enumerate(df.columns, start=1)}
+        idx_scan = col_idx.get("index")
+        idx_peptide = col_idx.get("Peptide")
+        idx_parsed_mods = col_idx.get("Parsed Modifications")
+
+        for row_tuple in df.itertuples(index=True, name=None):
+            idx = row_tuple[0]
+            scan_number = str(row_tuple[idx_scan] if idx_scan is not None else "")
+            peptide = str(row_tuple[idx_peptide] if idx_peptide is not None else "")
+            key = (scan_number, peptide)
+
+            entry = ptm_data.get(key)
+            if entry is None:
+                continue
+
+            ptm_mass = entry["ptm_mass"]
+            position = entry["position"]
+
+            if position is None:
+                # Case 3: unlocalized — apply user preferences
+                pref = self.ptm_localization_prefs.get(ptm_mass)
+                if pref is None:
+                    # User chose "Ignore" or no pref for this mass
+                    rows_to_drop.append(idx)
+                    continue
+                # Find first occurrence of the target amino acid
+                aa_idx = peptide.find(pref)
+                if aa_idx == -1:
+                    # Target amino acid not in peptide — drop row
+                    rows_to_drop.append(idx)
+                    continue
+                position = aa_idx + 1  # convert 0-based to 1-based
+
+            # Append the ptm_result modification
+            existing_mods = (
+                row_tuple[idx_parsed_mods] if idx_parsed_mods is not None else []
+            )
+            if not isinstance(existing_mods, list):
+                existing_mods = []
+            new_mods = existing_mods + [(round(ptm_mass, 6), position)]
+
+            df.at[idx, "Parsed Modifications"] = new_mods
+            new_display = _build_modified_peptide(peptide, new_mods)
+            df.at[idx, "Modified Peptide"] = new_display
+            df.at[idx, "Assigned Modifications"] = new_display
+
+        if rows_to_drop:
+            df = df.drop(index=rows_to_drop).reset_index(drop=True)
+            logger.debug(
+                f"Dropped {len(rows_to_drop)} PSMs with unlocalized/ignored ptm_result masses"
+            )
+
+        return df
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def clear_psm_cache(self):
+        """Release the cached PSM list to free memory."""
+        self._psms_cache = None
+
     def _read_psms(self) -> list:
+        if self._psms_cache is None:
+            self._psms_cache = self._load_psms_from_file()
+        return self._psms_cache
+
+    def _load_psms_from_file(self) -> list:
         module_path, class_name = READER_REGISTRY[self.format_key]
         try:
             mod = importlib.import_module(module_path)
@@ -498,48 +879,52 @@ class PSMUtilsNormalizer(PSMNormalizer):
 
         # pepXML: try preferred score keys before falling back to default
         # auto-inference (which picks "expect" over "hyperscore")
-        if self.format_key == 'pepXML':
+        if self.format_key == "pepXML":
             for score_key in _PEPXML_SCORE_PRIORITY:
                 try:
-                    with reader_cls(self.source_file_path, score_key=score_key) as reader:
+                    with reader_cls(
+                        self.source_file_path, score_key=score_key
+                    ) as reader:
                         return list(reader)
                 except (KeyError, ValueError, Exception) as exc:
                     # score_key not found in this file's search_scores — try next
-                    if 'score' in str(exc).lower() or isinstance(exc, KeyError):
-                        print(f"[DEBUG] pepXML score_key '{score_key}' not available, trying next...")
+                    if "score" in str(exc).lower() or isinstance(exc, KeyError):
+                        logger.debug(
+                            f"pepXML score_key '{score_key}' not available, trying next..."
+                        )
                         continue
                     raise
             # All preferred keys failed — fall back to psm_utils default
-            print("[DEBUG] No preferred pepXML score key found; using psm_utils default")
+            logger.debug("No preferred pepXML score key found; using psm_utils default")
 
         with reader_cls(self.source_file_path) as reader:
             return list(reader)
 
     def _psm_to_row(self, psm) -> dict:
         """Convert a single psm_utils PSM object to the internal row dict."""
-        pf_str = str(psm.peptidoform) if psm.peptidoform is not None else ''
+        pf_str = str(psm.peptidoform) if psm.peptidoform is not None else ""
         bare_seq, parsed_mods, charge = _parse_proforma_string(
             pf_str,
-            correct_terminal_masses=(self.format_key == 'pepXML'),
+            correct_terminal_masses=(self.format_key == "pepXML"),
         )
 
         # Encode parsed_mods as list-of-tuples (consistent with other normalizers)
         parsed_mods_out = [(round(m, 6), p) for m, p in parsed_mods]
 
         # Assigned Modifications: store the ProForma sequence section for display
-        seq_section = pf_str.rsplit('/', 1)[0]
-        assigned_mods_str = seq_section if parsed_mods else ''
+        seq_section = pf_str.rsplit("/", 1)[0]
+        assigned_mods_str = seq_section if parsed_mods else ""
 
         # Run / spectrum file (stem without extension)
-        run = (psm.run or '').strip()
-        if run in ('', 'nan', 'None', 'none'):
-            run = ''
-        if run.lower().endswith(('.raw', '.mzml', '.d')):
-            run = run.rsplit('.', 1)[0]
+        run = (psm.run or "").strip()
+        if run in ("", "nan", "None", "none"):
+            run = ""
+        if run.lower().endswith((".raw", ".mzml", ".d")):
+            run = run.rsplit(".", 1)[0]
 
         # Spectrum ID — parse scan number (and optionally run name) from
         # various identifier formats used by different search engines
-        spectrum_id = str(psm.spectrum_id or '').strip()
+        spectrum_id = str(psm.spectrum_id or "").strip()
         scan_number, parsed_run = _parse_spectrum_id(spectrum_id)
 
         # If the reader didn't provide a run name, use the one parsed from
@@ -549,22 +934,27 @@ class PSMUtilsNormalizer(PSMNormalizer):
 
         # Protein list
         proteins = psm.protein_list or []
-        protein_str = '; '.join(str(p) for p in proteins) if proteins else ''
+        protein_str = "; ".join(str(p) for p in proteins) if proteins else ""
 
         return {
-            'Peptide':               bare_seq,
-            'Modified Peptide':      pf_str.rsplit('/', 1)[0],
-            'Charge':                charge if charge is not None else 0,
-            'Observed M/Z':          float(psm.precursor_mz) if psm.precursor_mz is not None else 0.0,
-            'Assigned Modifications': assigned_mods_str,
-            'Parsed Modifications':  parsed_mods_out,
-            'Hyperscore':            float(psm.score) if psm.score is not None else 0.0,
-            'Protein':               protein_str,
-            'Peptide Length':        len(bare_seq),
-            'Prev AA':               '',
-            'Next AA':               '',
-            'Protein Start':         '',
-            'Protein End':           '',
-            'Spectrum file':         run,
-            'index':                 scan_number,
+            "Peptide": bare_seq,
+            "Modified Peptide": pf_str.rsplit("/", 1)[0],
+            "Charge": charge if charge is not None else 0,
+            "Observed M/Z": (
+                float(psm.precursor_mz) if psm.precursor_mz is not None else 0.0
+            ),
+            "Assigned Modifications": assigned_mods_str,
+            "Parsed Modifications": parsed_mods_out,
+            "Hyperscore": float(psm.score) if psm.score is not None else 0.0,
+            "Protein": protein_str,
+            "Peptide Length": len(bare_seq),
+            "Prev AA": "",
+            "Next AA": "",
+            "Protein Start": "",
+            "Protein End": "",
+            "Spectrum file": run,
+            "index": scan_number,
+            "Retention": (
+                float(psm.retention_time) if psm.retention_time is not None else 0.0
+            ),
         }

@@ -3,9 +3,25 @@ import ast
 import json
 import traceback
 import logging
-from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QTableWidget,
-    QTableWidgetItem, QLineEdit, QMessageBox, QStackedWidget, QHeaderView, QProgressDialog,
-    QLabel, QApplication, QComboBox, QMenu, QScrollArea, QFrame, QSizePolicy)
+from PyQt6.QtWidgets import (
+    QWidget,
+    QHBoxLayout,
+    QVBoxLayout,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QLineEdit,
+    QMessageBox,
+    QStackedWidget,
+    QHeaderView,
+    QProgressDialog,
+    QLabel,
+    QApplication,
+    QComboBox,
+    QMenu,
+    QScrollArea,
+    QFrame,
+)
 from PyQt6.QtCore import pyqtSignal, Qt, QMimeData, QPoint, QTimer
 from PyQt6.QtGui import QDrag, QPainter, QPixmap
 from utils.utility_classes.toaster import QToaster
@@ -15,12 +31,16 @@ from utils.utilities import DataGatherer
 
 logger = logging.getLogger(__name__)
 
+
 class PSMSummaryWidget(QWidget):
 
     # Signal: user selected a row that has a Peptide, Parsed Modifications, Charge
     peptideSelected = pyqtSignal(str, list, int, dict)  # (Peptide, ParsedMods, Charge)
-    rawDataExtracted = pyqtSignal(object, object)  # will carry (mz_array, intensity_array)
-
+    rawDataExtracted = pyqtSignal(
+        object, object
+    )  # will carry (mz_array, intensity_array)
+    # Adjust this to control PSM table column-header height.
+    TABLE_HEADER_HEIGHT = EditorConstants.HEADER_MIN_HEIGHT() + 4
 
     def _match_details_row(self, table_row):
         """Match a visible details-table row back to the underlying DataFrame row.
@@ -34,7 +54,13 @@ class PSMSummaryWidget(QWidget):
             if header_item:
                 col_name_to_idx[header_item.text()] = col_idx
 
-        needed_columns = ["Modified Peptide", "Charge", "Hyperscore", "Observed M/Z", "Assigned Modifications"]
+        needed_columns = [
+            "Modified Peptide",
+            "Charge",
+            "Hyperscore",
+            "Observed M/Z",
+            "Assigned Modifications",
+        ]
         visible_row_data = {}
         for col_name in needed_columns:
             if col_name in col_name_to_idx:
@@ -47,9 +73,9 @@ class PSMSummaryWidget(QWidget):
         observed_mz_val = float(visible_row_data.get("Observed M/Z", 0))
 
         matching_rows = self.current_details_df[
-            (self.current_details_df["Charge"] == charge_val) &
-            (abs(self.current_details_df["Hyperscore"] - hyperscore_val) < 0.001) &
-            (abs(self.current_details_df["Observed M/Z"] - observed_mz_val) < 0.001)
+            (self.current_details_df["Charge"] == charge_val)
+            & (abs(self.current_details_df["Hyperscore"] - hyperscore_val) < 0.001)
+            & (abs(self.current_details_df["Observed M/Z"] - observed_mz_val) < 0.001)
         ]
 
         if matching_rows.empty:
@@ -92,7 +118,9 @@ class PSMSummaryWidget(QWidget):
             self.get_spectral_data_from_cache(row_data)
 
         except Exception as e:
-            logger.debug(f"[ERROR] Unexpected exception in _on_details_table_singleclick: {e}")
+            logger.debug(
+                f"[ERROR] Unexpected exception in _on_details_table_singleclick: {e}"
+            )
             traceback.print_exc()
 
     def get_spectral_data_from_cache(self, row_data):
@@ -100,12 +128,15 @@ class PSMSummaryWidget(QWidget):
         try:
             # Get the main window reference to access extracted data
             main_window = self.get_main_window()
-            if not main_window or not hasattr(main_window, 'extracted_spectral_data'):
+            if not main_window or not hasattr(main_window, "extracted_spectral_data"):
                 logger.debug("[WARNING] No pre-extracted spectral data available")
-                QMessageBox.information(self, "No Data",
-                    "No pre-extracted spectral data found. Please run 'Prepare data' first.")
+                QMessageBox.information(
+                    self,
+                    "No Data",
+                    "No pre-extracted spectral data found. Please run 'Prepare data' first.",
+                )
                 return
-            
+
             # Get file path and scan number
             raw_path_str = row_data.get("spectrum_file_path", "")
             index_str = str(row_data.get("index", ""))
@@ -113,10 +144,10 @@ class PSMSummaryWidget(QWidget):
             if not raw_path_str or not index_str:
                 logger.debug("[WARNING] Missing raw path or index")
                 return
-            
+
             # Use index_str instead of undefined scan_str
             scan_str = DataGatherer._clean_scan_number(index_str)
-            
+
             # Create cache key
             cache_key = f"{raw_path_str}_{scan_str}"
 
@@ -124,36 +155,39 @@ class PSMSummaryWidget(QWidget):
             extracted_data = main_window.extracted_spectral_data
             if cache_key in extracted_data:
                 spectral_data = extracted_data[cache_key]
-                mz_array = spectral_data['mz_values']
-                intensity_array = spectral_data['intensity_values']
-                header_info = spectral_data.get('header', None)
+                mz_array = spectral_data["mz_values"]
+                intensity_array = spectral_data["intensity_values"]
+                header_info = spectral_data.get("header")
 
                 logger.debug(f"[DEBUG] Retrieved cached data: {len(mz_array)} peaks")
                 if header_info:
-                    logger.debug(f"[DEBUG] Header info: {header_info[:100]}...") 
-                
+                    logger.debug(f"[DEBUG] Header info: {header_info[:100]}...")
+
                 # Emit the signal with cached data
                 self.rawDataExtracted.emit(mz_array, intensity_array)
-                
+
                 # Show success message with header info
                 message = f"Loaded cached spectral data ({len(mz_array)} peaks)"
                 if header_info:
-                    message += f"\nHeader: {header_info[:50]}..."  
-            
+                    message += f"\nHeader: {header_info[:50]}..."
+
                 toast = QToaster(self)
                 toast.show_message(message)
-                
+
             else:
                 logger.debug(f"[WARNING] No cached data found for key: {cache_key}")
                 # Fallback: offer to extract this specific scan
-                reply = QMessageBox.question(self, "Data Not Found",
+                reply = QMessageBox.question(
+                    self,
+                    "Data Not Found",
                     f"No cached spectral data found for scan {scan_str}.\n"
                     f"Would you like to extract it now?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+
                 if reply == QMessageBox.StandardButton.Yes:
                     self.extract_single_scan_fallback(raw_path_str, scan_str)
-                
+
         except Exception as e:
             logger.debug(f"[ERROR] Error retrieving cached data: {e}")
             traceback.print_exc()
@@ -162,50 +196,53 @@ class PSMSummaryWidget(QWidget):
         """Fallback method to extract a single scan if not in cache"""
         try:
             # Show progress
-            progress = QProgressDialog("Extracting scan data...", "Cancel", 0, 100, self)
+            progress = QProgressDialog(
+                "Extracting scan data...", "Cancel", 0, 100, self
+            )
             progress.setWindowModality(Qt.WindowModality.WindowModal)
             progress.setMinimumDuration(0)
             progress.setValue(50)
             progress.show()
-            
+
             QApplication.processEvents()
-            
+
             result = spectral_extraction(raw_path, scan_str)
-            
+
             if result is not None:
                 mz_array, intensity_array = result
                 progress.setValue(100)
-                
+
                 # Add to cache for future use
                 main_window = self.get_main_window()
-                if main_window and hasattr(main_window, 'extracted_spectral_data'):
+                if main_window and hasattr(main_window, "extracted_spectral_data"):
                     cache_key = f"{raw_path}_{scan_str}"
                     main_window.extracted_spectral_data[cache_key] = {
-                        'mz_values': list(mz_array),
-                        'intensity_values': list(intensity_array)
+                        "mz_values": list(mz_array),
+                        "intensity_values": list(intensity_array),
                     }
-                
+
                 # Emit signal
                 self.rawDataExtracted.emit(mz_array, intensity_array)
-                
+
                 progress.close()
-            
+
                 toast = QToaster(self)
                 toast.show_message(f"Extracted scan data ({len(mz_array)} peaks)")
-                
+
             else:
                 progress.close()
                 QMessageBox.warning(self, "Error", f"Failed to extract scan {scan_str}")
-                
+
         except Exception as e:
-            if 'progress' in locals():
+            if "progress" in locals():
                 progress.close()
             QMessageBox.warning(self, "Error", f"Extraction failed: {str(e)}")
 
     def get_main_window(self):
         """Get reference to the main application window"""
         from utils.utility_classes.widgets import get_main_window
-        return get_main_window(self, 'extracted_spectral_data')
+
+        return get_main_window(self, "extracted_spectral_data")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -214,23 +251,23 @@ class PSMSummaryWidget(QWidget):
         self.summary_df_unfiltered = pd.DataFrame()
         self.original_details_df = pd.DataFrame()
         self.current_details_df = pd.DataFrame()
-        
+
         # Initialize worker references to None for safety
         self._current_worker = None
         self._current_progress = None
-        
+
         # PERFORMANCE: Add debounce timers for filtering
         self.summary_filter_timer = QTimer()
         self.summary_filter_timer.setSingleShot(True)
-        self.summary_filter_timer.timeout.connect(self._apply_summary_filter_delayed)
-        
+        self.summary_filter_timer.timeout.connect(self.apply_summary_filter)
+
         self.details_filter_timer = QTimer()
         self.details_filter_timer.setSingleShot(True)
-        self.details_filter_timer.timeout.connect(self._apply_details_filter_delayed)
-        
+        self.details_filter_timer.timeout.connect(self.apply_details_filter)
+
         # PERFORMANCE: Set debounce delay (milliseconds)
         self.filter_delay_ms = 300  # Wait 300ms after user stops typing
-        
+
         # MULTI-FILTER: Store active filters for summary and details
         self.active_summary_filters = {}  # {column_name: filter_value}
         self.active_details_filters = {}  # {column_name: filter_value}
@@ -240,12 +277,19 @@ class PSMSummaryWidget(QWidget):
         self.hidden_details_columns = set()
 
         # Default columns to show in details view (user can add more from raw_df)
-        self.default_details_columns = ["Modified Peptide", "Charge", "Hyperscore", "Observed M/Z",
-                                        "Assigned Modifications", "Spectrum file", "index", "Header"]
+        self.default_details_columns = [
+            "Modified Peptide",
+            "Charge",
+            "Hyperscore",
+            "Observed M/Z",
+            "Assigned Modifications",
+            "Spectrum file",
+            "index",
+            "Header",
+        ]
         self.visible_details_columns = set(self.default_details_columns)
-        
+
         main_layout = QVBoxLayout(self)
-        self.setLayout(main_layout)
 
         # Create main horizontal layout for table and filters
         self.main_content_layout = QHBoxLayout()
@@ -253,18 +297,23 @@ class PSMSummaryWidget(QWidget):
 
         # Left side - tables with navigation
         self.table_section_layout = QVBoxLayout()
-        
+
         # Summary filter layout (initially visible)
         self.summary_filter_widget = QWidget()
         summary_filter_layout = QVBoxLayout(self.summary_filter_widget)
-        summary_filter_layout.setContentsMargins(5, 5, 5, 5)
-        summary_filter_layout.setSpacing(3)
-        
-        
+        summary_filter_layout.setContentsMargins(8, 8, 8, 8)
+        summary_filter_layout.setSpacing(6)
+
+        summary_filter_label = QLabel("Summary Filters")
+        summary_filter_label.setObjectName("filterSectionTitle")
+        summary_filter_layout.addWidget(summary_filter_label)
+
         # MULTI-FILTER: Column selector dropdown
         self.summary_column_selector = QComboBox()
-        self.summary_column_selector.addItems(["Peptide", "Protein", "Unique Modifications", "Prev AA", "Next AA"])
-        self.summary_column_selector.setStyleSheet(EditorConstants.get_lineedit_style())
+        self.summary_column_selector.addItems(
+            ["Peptide", "Protein", "Unique Modifications", "Prev AA", "Next AA"]
+        )
+        self.summary_column_selector.setStyleSheet(EditorConstants.get_combobox_style())
         summary_filter_layout.addWidget(self.summary_column_selector)
 
         # MULTI-FILTER: Single filter input
@@ -273,56 +322,44 @@ class PSMSummaryWidget(QWidget):
         self.summary_filter_input.returnPressed.connect(self.add_summary_filter)
         self.summary_filter_input.setStyleSheet(EditorConstants.get_lineedit_style())
         summary_filter_layout.addWidget(self.summary_filter_input)
-        
+
         # MULTI-FILTER: Add filter button
         add_filter_btn = QPushButton("Add Filter")
         add_filter_btn.clicked.connect(self.add_summary_filter)
-        add_filter_btn.setMaximumHeight(25)
+        add_filter_btn.setMinimumHeight(EditorConstants.BUTTON_HEIGHT())
         add_filter_btn.setStyleSheet(EditorConstants.get_pushbutton_style("primary"))
         summary_filter_layout.addWidget(add_filter_btn)
-        
-        
+
+        summary_active_filters_label = QLabel("Active Filters:")
+        summary_active_filters_label.setObjectName("filterActiveLabel")
+        summary_filter_layout.addWidget(summary_active_filters_label)
+
         self.summary_active_filters_list = QLabel("None")
         self.summary_active_filters_list.setWordWrap(True)
-        self.summary_active_filters_list.setStyleSheet(f"""
-            QLabel {{
-                font-size: 9px;
-                color: {EditorConstants.TEXT_COLOR()};
-                padding: 3px;
-                background-color: {EditorConstants.GRAY_50()};
-                border: 1px solid {EditorConstants.GRAY_200()};
-                border-radius: 3px;
-            }}
-        """)
+        self.summary_active_filters_list.setObjectName("activeFiltersValue")
         summary_filter_layout.addWidget(self.summary_active_filters_list)
 
         clear_summary_btn = QPushButton("Clear")
         clear_summary_btn.clicked.connect(self.clear_summary_filter)
-        clear_summary_btn.setMaximumHeight(25)
+        clear_summary_btn.setMinimumHeight(EditorConstants.BUTTON_HEIGHT())
         clear_summary_btn.setStyleSheet(EditorConstants.get_pushbutton_style("danger"))
         summary_filter_layout.addWidget(clear_summary_btn)
 
         # Details filter layout (initially hidden)
         self.details_filter_widget = QWidget()
         details_filter_layout = QVBoxLayout(self.details_filter_widget)
-        details_filter_layout.setContentsMargins(5, 5, 5, 5)
-        details_filter_layout.setSpacing(3)
-        
+        details_filter_layout.setContentsMargins(8, 8, 8, 8)
+        details_filter_layout.setSpacing(6)
+
         # Add filter label
         details_filter_label = QLabel("Details Filters")
-        details_filter_label.setStyleSheet(f"""
-            QLabel {{
-                {EditorConstants.get_font_string("bold")}
-                color: {EditorConstants.HEADER_TEXT_COLOR()};
-                font-size: 11px;
-            }}
-        """)
+        details_filter_label.setObjectName("filterSectionTitle")
         details_filter_layout.addWidget(details_filter_label)
-        
+
         # MULTI-FILTER: Column selector dropdown
         self.details_column_selector = QComboBox()
         # Will be populated with all columns from raw_df when data is loaded
-        self.details_column_selector.setStyleSheet(EditorConstants.get_lineedit_style())
+        self.details_column_selector.setStyleSheet(EditorConstants.get_combobox_style())
         details_filter_layout.addWidget(self.details_column_selector)
 
         # MULTI-FILTER: Single filter input
@@ -331,46 +368,33 @@ class PSMSummaryWidget(QWidget):
         self.details_filter_input.returnPressed.connect(self.add_details_filter)
         self.details_filter_input.setStyleSheet(EditorConstants.get_lineedit_style())
         details_filter_layout.addWidget(self.details_filter_input)
-        
+
         # MULTI-FILTER: Add filter button
         add_details_filter_btn = QPushButton("Add Filter")
         add_details_filter_btn.clicked.connect(self.add_details_filter)
-        add_details_filter_btn.setMaximumHeight(25)
-        add_details_filter_btn.setStyleSheet(EditorConstants.get_pushbutton_style("primary"))
+        add_details_filter_btn.setMinimumHeight(EditorConstants.BUTTON_HEIGHT())
+        add_details_filter_btn.setStyleSheet(
+            EditorConstants.get_pushbutton_style("primary")
+        )
         details_filter_layout.addWidget(add_details_filter_btn)
-        
+
         # MULTI-FILTER: Active filters display
         details_active_filters_label = QLabel("Active Filters:")
-        details_active_filters_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 10px;
-                color: {EditorConstants.HEADER_TEXT_COLOR()};
-                margin-top: 5px;
-            }}
-        """)
+        details_active_filters_label.setObjectName("filterActiveLabel")
         details_filter_layout.addWidget(details_active_filters_label)
-        
+
         self.details_active_filters_list = QLabel("None")
         self.details_active_filters_list.setWordWrap(True)
-        self.details_active_filters_list.setStyleSheet(f"""
-            QLabel {{
-                font-size: 9px;
-                color: {EditorConstants.TEXT_COLOR()};
-                padding: 3px;
-                background-color: {EditorConstants.GRAY_50()};
-                border: 1px solid {EditorConstants.GRAY_200()};
-                border-radius: 3px;
-            }}
-        """)
+        self.details_active_filters_list.setObjectName("activeFiltersValue")
         details_filter_layout.addWidget(self.details_active_filters_list)
 
         # Horizontal layout for Clear and Back buttons
         buttons_layout = QHBoxLayout()
         buttons_layout.setSpacing(5)
-        
+
         clear_details_btn = QPushButton("Clear")
         clear_details_btn.clicked.connect(self.clear_details_filter)
-        clear_details_btn.setMaximumHeight(25)
+        clear_details_btn.setMinimumHeight(EditorConstants.BUTTON_HEIGHT())
         clear_details_btn.setStyleSheet(EditorConstants.get_pushbutton_style("danger"))
         buttons_layout.addWidget(clear_details_btn)
 
@@ -378,27 +402,11 @@ class PSMSummaryWidget(QWidget):
         self.back_button = QPushButton("←")
         self.back_button.setToolTip("Back to Summary")
         self.back_button.clicked.connect(self._return_to_summary)
-        self.back_button.setMaximumHeight(25)
+        self.back_button.setMinimumHeight(EditorConstants.BUTTON_HEIGHT())
         self.back_button.setMaximumWidth(35)
-        self.back_button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {EditorConstants.GRAY_500()};
-                color: white;
-                {EditorConstants.get_border_string(EditorConstants.GRAY_600(), radius=EditorConstants.BORDER_RADIUS_SMALL())}
-                font-size: 14px;
-                {EditorConstants.get_font_string("bold")}
-                padding: {EditorConstants.PADDING_SMALL()};
-                min-height: {EditorConstants.EDITOR_MIN_HEIGHT()}px;
-            }}
-            QPushButton:hover {{
-                background-color: {EditorConstants.GRAY_600()};
-            }}
-            QPushButton:pressed {{
-                background-color: {EditorConstants.PRESSED_COLOR()};
-            }}
-        """)
+        self.back_button.setStyleSheet(EditorConstants.get_pushbutton_style("secondary"))
         buttons_layout.addWidget(self.back_button)
-        
+
         details_filter_layout.addLayout(buttons_layout)
 
         # Hide details filters initially
@@ -411,7 +419,7 @@ class PSMSummaryWidget(QWidget):
         self.summary_page = QWidget()
         summary_page_layout = QVBoxLayout(self.summary_page)
         summary_page_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         self.summary_table = QTableWidget()
         StyleSheet.apply_table_styling(self.summary_table)
         self.summary_table.setAlternatingRowColors(False)  # Disable alternating colors
@@ -419,27 +427,45 @@ class PSMSummaryWidget(QWidget):
         self.summary_table.cellDoubleClicked.connect(self.show_details_for_row)
         self.summary_table.setSortingEnabled(True)
         self.summary_table.horizontalHeader().setSectionsClickable(True)
-        self.summary_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.summary_table.horizontalHeader().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.summary_table.horizontalHeader().customContextMenuRequested.connect(self._show_summary_header_menu)
+        self.summary_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
+        self.summary_table.horizontalHeader().setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self.summary_table.horizontalHeader().customContextMenuRequested.connect(
+            self._show_summary_header_menu
+        )
+        self.summary_table.horizontalHeader().setDefaultSectionSize(
+            self.TABLE_HEADER_HEIGHT
+        )
         summary_page_layout.addWidget(self.summary_table)
         self.stacked_widget.addWidget(self.summary_page)
-        
+
         # Page 1: details (no longer needs the back button here)
         self.details_page = QWidget()
         details_page_layout = QVBoxLayout(self.details_page)  # Changed back to vertical
         details_page_layout.setContentsMargins(0, 0, 0, 0)
         details_page_layout.setSpacing(5)
-        
+
         self.details_table = QTableWidget()
         StyleSheet.apply_table_styling(self.details_table)
         self.details_table.setAlternatingRowColors(False)
         self.details_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.details_table.setSortingEnabled(True)
         self.details_table.horizontalHeader().setSectionsClickable(True)
-        self.details_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.details_table.horizontalHeader().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.details_table.horizontalHeader().customContextMenuRequested.connect(self._show_details_header_menu)
+        self.details_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
+        self.details_table.horizontalHeader().setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self.details_table.horizontalHeader().customContextMenuRequested.connect(
+            self._show_details_header_menu
+        )
+        self.details_table.horizontalHeader().setDefaultSectionSize(
+            self.TABLE_HEADER_HEIGHT
+        )
         details_page_layout.addWidget(self.details_table)
         self.stacked_widget.addWidget(self.details_page)
         self.table_section_layout.addWidget(self.stacked_widget)
@@ -462,7 +488,9 @@ class PSMSummaryWidget(QWidget):
         filter_scroll = QScrollArea()
         filter_scroll.setWidget(filter_container)
         filter_scroll.setWidgetResizable(True)
-        filter_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        filter_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         filter_scroll.setFrameShape(QFrame.Shape.NoFrame)
 
         filter_scroll.setMaximumWidth(215)
@@ -471,22 +499,40 @@ class PSMSummaryWidget(QWidget):
         self.main_content_layout.addWidget(filter_scroll)
 
         # Apply compact styling to filter widgets
+        self.summary_filter_widget.setObjectName("psmFilterPanel")
+        self.details_filter_widget.setObjectName("psmFilterPanel")
         filter_widget_style = f"""
-            QWidget {{
+            QWidget#psmFilterPanel {{
                 background-color: {EditorConstants.GRAY_50()};
                 {EditorConstants.get_border_string(EditorConstants.GRAY_200(), radius=EditorConstants.BORDER_RADIUS_LARGE())}
             }}
-            QLabel {{
+            QLabel#filterSectionTitle {{
                 color: {EditorConstants.HEADER_TEXT_COLOR()};
                 {EditorConstants.get_font_string("bold")}
+                font-size: {EditorConstants.BASE_FONT_SIZE() + 1}px;
                 border: none;
                 background: transparent;
+            }}
+            QLabel#filterActiveLabel {{
+                color: {EditorConstants.HEADER_TEXT_COLOR()};
+                {EditorConstants.get_font_string("medium")}
+                border: none;
+                background: transparent;
+                margin-top: 2px;
+            }}
+            QLabel#activeFiltersValue {{
+                background-color: {EditorConstants.BACKGROUND_COLOR()};
+                color: {EditorConstants.TEXT_COLOR()};
+                {EditorConstants.get_border_string(EditorConstants.GRAY_300(), radius=EditorConstants.BORDER_RADIUS_MEDIUM())}
+                {EditorConstants.get_font_string()}
+                padding: {EditorConstants.PADDING_SMALL()};
+                min-height: {EditorConstants.EDITOR_MIN_HEIGHT()}px;
             }}
             {EditorConstants.get_scrollbar_style()}
         """
         self.summary_filter_widget.setStyleSheet(filter_widget_style)
         self.details_filter_widget.setStyleSheet(filter_widget_style)
-        
+
         # Set maximum width for filter section to keep it compact
         self.summary_filter_widget.setMaximumWidth(200)
         self.details_filter_widget.setMaximumWidth(200)
@@ -497,7 +543,7 @@ class PSMSummaryWidget(QWidget):
     def _return_to_summary(self):
         """Return to summary view and show/hide appropriate filters"""
         self.stacked_widget.setCurrentIndex(0)
-        
+
         # Show summary filters, hide details filters
         self.summary_filter_widget.setVisible(True)
         self.details_filter_widget.setVisible(False)
@@ -513,7 +559,7 @@ class PSMSummaryWidget(QWidget):
 
         # Initialize details column selector with all available columns
         if not self.raw_df.empty:
-            all_columns = sorted(list(self.raw_df.columns))
+            all_columns = sorted(self.raw_df.columns)
             self.details_column_selector.clear()
             self.details_column_selector.addItems(all_columns)
 
@@ -530,15 +576,15 @@ class PSMSummaryWidget(QWidget):
             return "; ".join(unique_mods)
 
         required_columns = {
-            "Peptide", 
-            "Protein", 
+            "Peptide",
+            "Protein",
             "Assigned Modifications",
             "Prev AA",
             "Next AA",
             "Peptide Length",
             "Protein Start",
             "Protein End",
-            "Hyperscore"  # Added for average score calculation
+            "Hyperscore",  # Added for average score calculation
         }
 
         if not required_columns.issubset(self.raw_df.columns):
@@ -549,27 +595,32 @@ class PSMSummaryWidget(QWidget):
             return
 
         grp = self.raw_df.groupby(["Peptide", "Protein"], dropna=False)
-        summary = grp.agg({
-            "Assigned Modifications": gather_mods,
-            "Prev AA": "first",
-            "Next AA": "first", 
-            "Peptide Length": "first",
-            "Protein Start": "first",
-            "Protein End": "first",
-            "Hyperscore": "mean",  # Calculate average score
-            # Use a different column for counting, or use size()
-        }).reset_index()
-        
+        summary = grp.agg(
+            {
+                "Assigned Modifications": gather_mods,
+                "Prev AA": "first",
+                "Next AA": "first",
+                "Peptide Length": "first",
+                "Protein Start": "first",
+                "Protein End": "first",
+                "Hyperscore": "mean",  # Calculate average score
+                # Use a different column for counting, or use size()
+            }
+        ).reset_index()
+
         # Add count column separately
-        count_df = grp.size().reset_index(name='Count')
+        count_df = grp.size().reset_index(name="Count")
         summary = summary.merge(count_df, on=["Peptide", "Protein"])
-        
+
         # Rename columns appropriately
-        summary.rename(columns={
-            "Assigned Modifications": "Unique Modifications",
-            "Hyperscore": "Average Score"
-        }, inplace=True)
-        
+        summary.rename(
+            columns={
+                "Assigned Modifications": "Unique Modifications",
+                "Hyperscore": "Average Score",
+            },
+            inplace=True,
+        )
+
         # Round average score to 2 decimal places
         summary["Average Score"] = summary["Average Score"].round(2)
 
@@ -596,13 +647,19 @@ class PSMSummaryWidget(QWidget):
         self.summary_table.setHorizontalHeaderLabels(df.columns)
 
         # Define numeric columns for proper sorting
-        numeric_columns = ["Average Score", "Count", "Peptide Length", "Protein Start", "Protein End"]
+        numeric_columns = [
+            "Average Score",
+            "Count",
+            "Peptide Length",
+            "Protein Start",
+            "Protein End",
+        ]
 
         for row_idx in range(len(df)):
             for col_idx, col_name in enumerate(df.columns):
                 val = df.iloc[row_idx, col_idx]
                 item = QTableWidgetItem()
-                
+
                 # Handle numeric columns specially for proper sorting
                 if col_name in numeric_columns:
                     try:
@@ -616,7 +673,7 @@ class PSMSummaryWidget(QWidget):
                     text = str(val)
                     item.setText(text)
                     item.setToolTip(text)
-                
+
                 self.summary_table.setItem(row_idx, col_idx, item)
 
         # Custom column sizing instead of resizeColumnsToContents()
@@ -625,13 +682,10 @@ class PSMSummaryWidget(QWidget):
 
         # Re-enable sorting
         self.summary_table.setSortingEnabled(True)
-        
-        # PERFORMANCE: Re-enable updates and refresh
-        self.summary_table.setUpdatesEnabled(True)
         self.summary_table.viewport().update()
-        
+
         self.stacked_widget.setCurrentIndex(0)
-        
+
     def _set_custom_column_widths(self):
         """Set initial column widths for the summary table.
 
@@ -694,8 +748,11 @@ class PSMSummaryWidget(QWidget):
         # Using both sources ensures engine-specific columns (e.g. MSFragger) that
         # may not be on every row still appear in the menu.
         raw_cols = list(self.raw_df.columns) if not self.raw_df.empty else []
-        details_cols = (list(self.current_details_df.columns)
-                        if not self.current_details_df.empty else [])
+        details_cols = (
+            list(self.current_details_df.columns)
+            if not self.current_details_df.empty
+            else []
+        )
         # Deduplicate while preserving order (raw_df first)
         seen: set = set()
         all_columns: list = []
@@ -723,16 +780,24 @@ class PSMSummaryWidget(QWidget):
             if col_name in all_columns:
                 action = default_menu.addAction(col_name)
                 action.setCheckable(True)
-                is_visible = col_name in self.visible_details_columns and col_name not in self.hidden_details_columns
+                is_visible = (
+                    col_name in self.visible_details_columns
+                    and col_name not in self.hidden_details_columns
+                )
                 action.setChecked(is_visible)
                 action.setData(("default", col_name))
 
         # Add other columns to additional menu (sorted alphabetically)
-        other_columns = sorted([col for col in all_columns if col not in self.default_details_columns])
+        other_columns = sorted(
+            [col for col in all_columns if col not in self.default_details_columns]
+        )
         for col_name in other_columns:
             action = other_menu.addAction(col_name)
             action.setCheckable(True)
-            is_visible = col_name in self.visible_details_columns and col_name not in self.hidden_details_columns
+            is_visible = (
+                col_name in self.visible_details_columns
+                and col_name not in self.hidden_details_columns
+            )
             action.setChecked(is_visible)
             action.setData(("other", col_name))
 
@@ -784,7 +849,9 @@ class PSMSummaryWidget(QWidget):
             if header_item and header_item.text() in hidden_set:
                 header.setSectionHidden(col_idx, True)
 
-    def _add_filter(self, column_selector, filter_input, active_filters, display_label, apply_fn):
+    def _add_filter(
+        self, column_selector, filter_input, active_filters, display_label, apply_fn
+    ):
         """Generic add-filter used by both summary and details."""
         column = column_selector.currentText()
         filter_text = filter_input.text().strip()
@@ -801,7 +868,9 @@ class PSMSummaryWidget(QWidget):
         if not active_filters:
             display_label.setText("None")
         else:
-            display_label.setText("\n".join(f"• {col}: {val}" for col, val in active_filters.items()))
+            display_label.setText(
+                "\n".join(f"• {col}: {val}" for col, val in active_filters.items())
+            )
 
     def _clear_filter(self, filter_input, active_filters, display_label):
         """Generic clear-filter used by both summary and details."""
@@ -823,7 +892,7 @@ class PSMSummaryWidget(QWidget):
         # Show ALL columns from raw_df, not just visible table columns
         # This allows filtering by any column, even if not displayed
         if not self.raw_df.empty:
-            all_columns = sorted(list(self.raw_df.columns))
+            all_columns = sorted(self.raw_df.columns)
             self.details_column_selector.addItems(all_columns)
 
         # Try to restore previous selection
@@ -836,29 +905,27 @@ class PSMSummaryWidget(QWidget):
         self.summary_filter_timer.stop()
         self.summary_filter_timer.start(self.filter_delay_ms)
 
-    def _apply_summary_filter_delayed(self):
-        self.apply_summary_filter()
-
     def add_summary_filter(self):
-        self._add_filter(self.summary_column_selector, self.summary_filter_input,
-                         self.active_summary_filters, self.summary_active_filters_list,
-                         self.apply_summary_filter)
+        self._add_filter(
+            self.summary_column_selector,
+            self.summary_filter_input,
+            self.active_summary_filters,
+            self.summary_active_filters_list,
+            self.apply_summary_filter,
+        )
 
-    def update_summary_filters_display(self):
-        self._update_filters_display(self.active_summary_filters, self.summary_active_filters_list)
-    
     def apply_summary_filter(self):
         """Apply all active filters to summary data"""
         if self.summary_df_unfiltered.empty:
             return
-        
+
         df_filtered = self.summary_df_unfiltered.copy()
-        
+
         # Apply each active filter
         for column, filter_value in self.active_summary_filters.items():
             if column in df_filtered.columns:
                 # Handle numeric columns differently (Hyperscore would be in details, but just in case)
-                if df_filtered[column].dtype in ['int64', 'float64']:
+                if df_filtered[column].dtype in ["int64", "float64"]:
                     try:
                         numeric_val = float(filter_value)
                         df_filtered = df_filtered[df_filtered[column] >= numeric_val]
@@ -866,14 +933,21 @@ class PSMSummaryWidget(QWidget):
                         pass  # Invalid numeric input, skip
                 else:
                     # Text-based filtering
-                    df_filtered = df_filtered[df_filtered[column].astype(str).str.contains(filter_value, case=False, na=False)]
+                    df_filtered = df_filtered[
+                        df_filtered[column]
+                        .astype(str)
+                        .str.contains(filter_value, case=False, na=False)
+                    ]
 
         self.summary_df = df_filtered
         self._show_summary_table(self.summary_df)
 
     def clear_summary_filter(self):
-        self._clear_filter(self.summary_filter_input, self.active_summary_filters,
-                           self.summary_active_filters_list)
+        self._clear_filter(
+            self.summary_filter_input,
+            self.active_summary_filters,
+            self.summary_active_filters_list,
+        )
         self.summary_df = self.summary_df_unfiltered.copy()
         self._show_summary_table(self.summary_df)
 
@@ -882,24 +956,22 @@ class PSMSummaryWidget(QWidget):
         self.details_filter_timer.stop()
         self.details_filter_timer.start(self.filter_delay_ms)
 
-    def _apply_details_filter_delayed(self):
-        self.apply_details_filter()
-
     def add_details_filter(self):
-        self._add_filter(self.details_column_selector, self.details_filter_input,
-                         self.active_details_filters, self.details_active_filters_list,
-                         self.apply_details_filter)
+        self._add_filter(
+            self.details_column_selector,
+            self.details_filter_input,
+            self.active_details_filters,
+            self.details_active_filters_list,
+            self.apply_details_filter,
+        )
 
-    def update_details_filters_display(self):
-        self._update_filters_display(self.active_details_filters, self.details_active_filters_list)
-    
     def apply_details_filter(self):
         """Apply all active filters to details data"""
         if self.original_details_df.empty:
             return
-            
+
         df_filtered = self.original_details_df.copy()
-        
+
         # Apply each active filter
         for column, filter_value in self.active_details_filters.items():
             if column in df_filtered.columns:
@@ -918,14 +990,21 @@ class PSMSummaryWidget(QWidget):
                         pass  # Invalid input, skip
                 else:
                     # Text-based filtering (Assigned Modifications, Spectrum file, Header, etc.)
-                    df_filtered = df_filtered[df_filtered[column].astype(str).str.contains(filter_value, case=False, na=False)]
+                    df_filtered = df_filtered[
+                        df_filtered[column]
+                        .astype(str)
+                        .str.contains(filter_value, case=False, na=False)
+                    ]
 
         self.current_details_df = df_filtered
         self._show_details_table()
 
     def clear_details_filter(self):
-        self._clear_filter(self.details_filter_input, self.active_details_filters,
-                           self.details_active_filters_list)
+        self._clear_filter(
+            self.details_filter_input,
+            self.active_details_filters,
+            self.details_active_filters_list,
+        )
         self.current_details_df = self.original_details_df.copy()
         self._show_details_table()
 
@@ -936,9 +1015,8 @@ class PSMSummaryWidget(QWidget):
         peptide = self.summary_table.item(row, 0).text()  # Peptide
         protein_id = self.summary_table.item(row, 1).text()  # Protein
 
-        mask = (
-            (self.raw_df["Peptide"] == peptide) &
-            (self.raw_df["Protein"] == protein_id)
+        mask = (self.raw_df["Peptide"] == peptide) & (
+            self.raw_df["Protein"] == protein_id
         )
         details_df = self.raw_df.loc[mask].copy()
         self.original_details_df = details_df
@@ -968,8 +1046,13 @@ class PSMSummaryWidget(QWidget):
                 ordered_columns.append(col)
 
         # Add any additional visible columns (not in defaults) sorted alphabetically
-        additional = sorted([col for col in self.visible_details_columns
-                           if col not in self.default_details_columns and col in df.columns])
+        additional = sorted(
+            [
+                col
+                for col in self.visible_details_columns
+                if col not in self.default_details_columns and col in df.columns
+            ]
+        )
         ordered_columns.extend(additional)
 
         if not ordered_columns:
@@ -992,8 +1075,15 @@ class PSMSummaryWidget(QWidget):
         self.details_table.setHorizontalHeaderLabels(display_df.columns)
 
         # Known numeric columns for proper sorting
-        known_numeric_columns = ["Charge", "Hyperscore", "Observed M/Z", "Calculated M/Z",
-                                 "Calibrated Observed M/Z", "Peptide Length", "Retention"]
+        known_numeric_columns = [
+            "Charge",
+            "Hyperscore",
+            "Observed M/Z",
+            "Calculated M/Z",
+            "Calibrated Observed M/Z",
+            "Peptide Length",
+            "Retention",
+        ]
 
         # Fill data
         for row_idx in range(len(display_df)):
@@ -1031,21 +1121,21 @@ class PSMSummaryWidget(QWidget):
         """Clean up any active worker threads and progress dialogs"""
         logger.debug("[DEBUG] Cleaning up worker and progress dialog...")
 
-        try:
-            if hasattr(self, '_current_worker') and self._current_worker is not None:
-                logger.debug("[DEBUG] Terminating worker thread...")
-                if self._current_worker.isRunning():
-                    self._current_worker.terminate()
-                    self._current_worker.wait(3000)  # Wait up to 3 seconds
-                self._current_worker = None
+        if self._current_worker is not None:
+            logger.debug("[DEBUG] Stopping worker thread...")
+            if self._current_worker.isRunning():
+                if hasattr(self._current_worker, "requestInterruption"):
+                    self._current_worker.requestInterruption()
+                if hasattr(self._current_worker, "quit"):
+                    self._current_worker.quit()
+                if not self._current_worker.wait(3000):
+                    logger.warning("[WARN] Worker thread did not stop within timeout")
+            self._current_worker = None
 
-            if hasattr(self, '_current_progress') and self._current_progress is not None:
-                logger.debug("[DEBUG] Closing progress dialog...")
-                self._current_progress.close()
-                self._current_progress = None
-
-        except Exception as e:
-            logger.debug(f"[ERROR] Exception during cleanup: {e}")
+        if self._current_progress is not None:
+            logger.debug("[DEBUG] Closing progress dialog...")
+            self._current_progress.close()
+            self._current_progress = None
 
     def closeEvent(self, event):
         """Handle widget close event"""
@@ -1054,63 +1144,61 @@ class PSMSummaryWidget(QWidget):
         super().closeEvent(event)
 
 
-
-
 class DraggablePSMSummaryWidget(PSMSummaryWidget):
     """Modified PSM Summary widget that supports dragging from details table"""
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.details_table.cellClicked.disconnect()  
+        self.details_table.cellClicked.disconnect()
         self.details_table.setDragEnabled(True)
         self.details_table.setDragDropMode(QTableWidget.DragDropMode.DragOnly)
         self.details_table.setDefaultDropAction(Qt.DropAction.CopyAction)
-    
-    def _show_details_table(self):
-        """Override to setup drag functionality on the details table"""
-        # Call parent method to setup table
-        super()._show_details_table()
-        
-        # Override mouse events for drag functionality
         self.details_table.mousePressEvent = self._details_mouse_press_event
         self.details_table.mouseMoveEvent = self._details_mouse_move_event
-    
+
+    def _show_details_table(self):
+        """Override to setup drag functionality on the details table"""
+        super()._show_details_table()
+
     def _details_mouse_press_event(self, event):
         """Handle mouse press for drag initiation"""
         if event.button() == Qt.MouseButton.LeftButton:
             self.details_table.drag_start_position = event.pos()
         # Call original mouse press event
         QTableWidget.mousePressEvent(self.details_table, event)
-    
+
     def _details_mouse_move_event(self, event):
         """Handle mouse move for drag detection"""
         if not (event.buttons() & Qt.MouseButton.LeftButton):
             return
-        
-        if not hasattr(self.details_table, 'drag_start_position'):
+
+        if not hasattr(self.details_table, "drag_start_position"):
             return
-            
-        if ((event.pos() - self.details_table.drag_start_position).manhattanLength() < 
-            QApplication.startDragDistance()):
+
+        if (
+            event.pos() - self.details_table.drag_start_position
+        ).manhattanLength() < QApplication.startDragDistance():
             return
-        
+
         # Start drag operation
         self._start_details_drag(event)
-    
+
     def _start_details_drag(self, event):
         """Start drag operation from details table"""
         # Get the row that was clicked
         row = self.details_table.rowAt(event.pos().y())
         if row < 0:
             return
-        
+
         # Get row data from details table
         try:
             peptide_data = self._extract_peptide_data_from_row(row)
             if not peptide_data:
                 return
 
-            logger.debug(f"[DEBUG] Starting drag for peptide: {peptide_data.get('Modified Peptide', 'Unknown')}")
+            logger.debug(
+                f"[DEBUG] Starting drag for peptide: {peptide_data.get('Modified Peptide', 'Unknown')}"
+            )
 
             # Create drag object
             drag = QDrag(self.details_table)
@@ -1119,29 +1207,33 @@ class DraggablePSMSummaryWidget(PSMSummaryWidget):
             # Set display text
             display_text = f"{peptide_data.get('Modified Peptide', '')}\n(z={peptide_data.get('Charge', '')}, score={peptide_data.get('Hyperscore', '')})"
             mimeData.setText(display_text)
-            
+
             # Set peptide data
             try:
                 peptide_data_json = json.dumps(peptide_data, default=str)
-                mimeData.setData("application/x-peptide-data", peptide_data_json.encode('utf-8'))
-                logger.debug(f"[DEBUG] Added peptide data to mime: {len(peptide_data_json)} chars")
+                mimeData.setData(
+                    "application/x-peptide-data", peptide_data_json.encode("utf-8")
+                )
+                logger.debug(
+                    f"[DEBUG] Added peptide data to mime: {len(peptide_data_json)} chars"
+                )
             except Exception as e:
                 logger.debug(f"[DEBUG] Error encoding peptide data: {e}")
-            
+
             # Set the mime data
             drag.setMimeData(mimeData)
-            
+
             # Create drag pixmap
             try:
                 pixmap = QPixmap(300, 50)
                 pixmap.fill(Qt.GlobalColor.lightGray)
                 painter = QPainter(pixmap)
                 painter.setPen(Qt.GlobalColor.black)
-                
-                text = display_text.replace('\n', ' ')
+
+                text = display_text.replace("\n", " ")
                 if len(text) > 40:
                     text = text[:37] + "..."
-                
+
                 painter.drawText(5, 20, text)
                 painter.end()
 
@@ -1153,11 +1245,11 @@ class DraggablePSMSummaryWidget(PSMSummaryWidget):
             # Execute drag
             result = drag.exec(Qt.DropAction.CopyAction)
             logger.debug(f"[DEBUG] Drag result: {result}")
-            
+
         except Exception as e:
             logger.debug(f"[DEBUG] Error starting drag: {e}")
             traceback.print_exc()
-    
+
     def _extract_peptide_data_from_row(self, row):
         """Extract peptide data from a details table row"""
         try:
@@ -1171,22 +1263,23 @@ class DraggablePSMSummaryWidget(PSMSummaryWidget):
 
             peptide_data = {
                 # Primary field names
-                'Peptide': row_data.get('Peptide', ''),
-                'Modified Peptide': visible_row_data.get('Modified Peptide', ''),
-                'Charge': charge_val,
-                'Assigned Modifications': visible_row_data.get('Assigned Modifications', ''),
-                'Parsed Modifications': row_data.get('Parsed Modifications', []),
-                'Hyperscore': hyperscore_val,
-                'Observed M/Z': observed_mz_val,
-                'Spectrum file': row_data.get('Spectrum file', ''),
-                'index': str(row_data.get('index', '')),
-                'spectrum_file_path': row_data.get('spectrum_file_path', ''),
-                'row_data': row_data,
-
+                "Peptide": row_data.get("Peptide", ""),
+                "Modified Peptide": visible_row_data.get("Modified Peptide", ""),
+                "Charge": charge_val,
+                "Assigned Modifications": visible_row_data.get(
+                    "Assigned Modifications", ""
+                ),
+                "Parsed Modifications": row_data.get("Parsed Modifications", []),
+                "Hyperscore": hyperscore_val,
+                "Observed M/Z": observed_mz_val,
+                "Spectrum file": row_data.get("Spectrum file", ""),
+                "index": str(row_data.get("index", "")),
+                "spectrum_file_path": row_data.get("spectrum_file_path", ""),
+                "row_data": row_data,
                 # Legacy aliases consumed by fragmentation_tab.py
-                'peptide': row_data.get('Peptide', ''),
-                'charge': charge_val,
-                'parsed_modifications': row_data.get('Parsed Modifications', []),
+                "peptide": row_data.get("Peptide", ""),
+                "charge": charge_val,
+                "parsed_modifications": row_data.get("Parsed Modifications", []),
             }
 
             return peptide_data

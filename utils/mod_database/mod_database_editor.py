@@ -1,7 +1,17 @@
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
-    QTableWidgetItem, QHeaderView, QMessageBox, QTabWidget, QWidget,
-    QAbstractItemView, QStyledItemDelegate, QStyle
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QMessageBox,
+    QTabWidget,
+    QWidget,
+    QAbstractItemView,
+    QStyledItemDelegate,
+    QStyle,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
@@ -10,13 +20,14 @@ from .modification_mass_database import ModificationMassDatabase
 from .central_mod_database import CentralModificationDatabase
 from utils.tables.excel_table import ExcelLikeTableWidget, create_search_bar
 
-
 # ------------------------------------------------------------------
 #  Shared helpers
 # ------------------------------------------------------------------
 
+
 def _make_filter_func(table):
     """Create a row-filter closure for a search input bound to *table*."""
+
     def filter_rows(text):
         text = text.lower()
         for row in range(table.rowCount()):
@@ -28,6 +39,7 @@ def _make_filter_func(table):
                 for col in range(table.columnCount())
             )
             table.setRowHidden(row, not match)
+
     return filter_rows
 
 
@@ -85,8 +97,12 @@ class ModDatabaseEditorDialog(QDialog):
     modification names and masses.
     """
 
-    def __init__(self, maxquant_db: ModificationMassDatabase,
-                 metamorpheus_db: ModificationMassDatabase, parent=None):
+    def __init__(
+        self,
+        maxquant_db: ModificationMassDatabase,
+        metamorpheus_db: ModificationMassDatabase,
+        parent=None,
+    ):
         super().__init__(parent)
         self.maxquant_db = maxquant_db
         self.metamorpheus_db = metamorpheus_db
@@ -109,10 +125,14 @@ class ModDatabaseEditorDialog(QDialog):
 
         layout.addWidget(self.tab_widget)
 
-        layout.addLayout(_create_button_bar(
-            self._add_entry, self._delete_entry,
-            self._save_changes, self.accept,
-        ))
+        layout.addLayout(
+            _create_button_bar(
+                self._add_entry,
+                self._delete_entry,
+                self._save_changes,
+                self.accept,
+            )
+        )
 
     # ------------------------------------------------------------------
     def _create_db_tab(self, db: ModificationMassDatabase):
@@ -125,12 +145,8 @@ class ModDatabaseEditorDialog(QDialog):
         table = ExcelLikeTableWidget()
         table.setColumnCount(2)
         table.setHorizontalHeaderLabels(["Modification Name", "Mass (Da)"])
-        table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.Stretch
-        )
-        table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.Fixed
-        )
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
         table.setColumnWidth(1, 150)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
         StyleSheet.apply_table_styling(table)
@@ -174,8 +190,10 @@ class ModDatabaseEditorDialog(QDialog):
 
     def _save_changes(self):
         """Read every row from the active tab and overwrite the database."""
-        for table, db in [(self.mq_table, self.maxquant_db),
-                          (self.mm_table, self.metamorpheus_db)]:
+        for table, db in [
+            (self.mq_table, self.maxquant_db),
+            (self.mm_table, self.metamorpheus_db),
+        ]:
             new_mods: dict[str, float] = {}
             errors = []
             for row in range(table.rowCount()):
@@ -189,21 +207,24 @@ class ModDatabaseEditorDialog(QDialog):
                     mass = float(mass_text)
                     new_mods[name] = mass
                 except ValueError:
-                    errors.append(f"Row {row + 1}: invalid mass '{mass_text}' "
-                                  f"for '{name}'")
+                    errors.append(
+                        f"Row {row + 1}: invalid mass '{mass_text}' " f"for '{name}'"
+                    )
 
             if errors:
                 QMessageBox.warning(
-                    self, "Validation Error",
-                    "Fix these issues before saving:\n\n" + "\n".join(errors)
+                    self,
+                    "Validation Error",
+                    "Fix these issues before saving:\n\n" + "\n".join(errors),
                 )
                 return
 
             db.mods = new_mods
             db._save()
 
-        QMessageBox.information(self, "Saved",
-                                "Modification databases saved successfully.")
+        QMessageBox.information(
+            self, "Saved", "Modification databases saved successfully."
+        )
 
 
 class _LabileCellDelegate(QStyledItemDelegate):
@@ -286,10 +307,14 @@ class CentralModEditorDialog(QDialog):
         self._populate_table()
         layout.addWidget(self.table)
 
-        layout.addLayout(_create_button_bar(
-            self._add_entry, self._delete_entry,
-            self._save_changes, self.accept,
-        ))
+        layout.addLayout(
+            _create_button_bar(
+                self._add_entry,
+                self._delete_entry,
+                self._save_changes,
+                self.accept,
+            )
+        )
 
     # ------------------------------------------------------------------
     def _populate_table(self):
@@ -297,12 +322,15 @@ class CentralModEditorDialog(QDialog):
         self.table.setRowCount(len(entries))
         for row, (name, entry) in enumerate(sorted(entries.items())):
             self.table.setItem(row, self._COL_NAME, QTableWidgetItem(name))
-            self.table.setItem(row, self._COL_MASS,
-                               QTableWidgetItem(f"{entry['mass']}"))
-            self.table.setItem(row, self._COL_NL,
-                               QTableWidgetItem(entry.get("neutral_losses", "")))
-            self.table.setItem(row, self._COL_RM,
-                               QTableWidgetItem(entry.get("remainder_ions", "")))
+            self.table.setItem(
+                row, self._COL_MASS, QTableWidgetItem(f"{entry['mass']}")
+            )
+            self.table.setItem(
+                row, self._COL_NL, QTableWidgetItem(entry.get("neutral_losses", ""))
+            )
+            self.table.setItem(
+                row, self._COL_RM, QTableWidgetItem(entry.get("remainder_ions", ""))
+            )
             self._set_labile_cell(row, entry.get("labile_loss", False))
 
     def _set_labile_cell(self, row: int, checked: bool):
@@ -359,7 +387,11 @@ class CentralModEditorDialog(QDialog):
                 continue
 
             labile_item = self.table.item(row, self._COL_LABILE)
-            labile = labile_item.data(Qt.ItemDataRole.UserRole) is True if labile_item else False
+            labile = (
+                labile_item.data(Qt.ItemDataRole.UserRole) is True
+                if labile_item
+                else False
+            )
 
             new_mods[name] = {
                 "mass": mass,
@@ -370,15 +402,17 @@ class CentralModEditorDialog(QDialog):
 
         if errors:
             QMessageBox.warning(
-                self, "Validation Error",
+                self,
+                "Validation Error",
                 "Fix these issues before saving:\n\n" + "\n".join(errors),
             )
             return
 
         self.central_db.mods = new_mods
         self.central_db._save()
-        QMessageBox.information(self, "Saved",
-                                "Central modification database saved successfully.")
+        QMessageBox.information(
+            self, "Saved", "Central modification database saved successfully."
+        )
 
     def _read_float(self, row: int, col: int, label: str) -> float:
         item = self.table.item(row, col)

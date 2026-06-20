@@ -1,16 +1,43 @@
 from PyQt6.QtWidgets import (
-    QStyledItemDelegate, QComboBox, QDialog, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QCheckBox, QGridLayout, QGroupBox,
-    QScrollArea, QWidget, QFrame
+    QStyledItemDelegate,
+    QComboBox,
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QLabel,
+    QCheckBox,
+    QGridLayout,
+    QGroupBox,
+    QScrollArea,
+    QWidget,
+    QFrame,
 )
 from PyQt6.QtCore import Qt
 from utils.style.style import DelegateStyles, EditorConstants
 
-
 # All 20 standard amino acids
 AMINO_ACIDS = [
-    'A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L',
-    'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'V', 'W', 'Y'
+    "A",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "K",
+    "L",
+    "M",
+    "N",
+    "P",
+    "Q",
+    "R",
+    "S",
+    "T",
+    "V",
+    "W",
+    "Y",
 ]
 
 
@@ -67,7 +94,9 @@ class RestrictionDialog(QDialog):
             "to the full peptide sequence rather than each fragment."
         )
         info_label.setWordWrap(True)
-        info_label.setStyleSheet(f"color: {EditorConstants.DISABLED_COLOR()}; font-size: 11px;")
+        info_label.setStyleSheet(
+            f"color: {EditorConstants.DISABLED_COLOR()}; font-size: 11px;"
+        )
         termini_layout.addWidget(info_label)
 
         self.c_term_cb = QCheckBox("C-terminus (full peptide for y/x/z ions)")
@@ -80,9 +109,13 @@ class RestrictionDialog(QDialog):
         aa_group = QGroupBox("Amino Acid Requirements")
         aa_layout = QVBoxLayout(aa_group)
 
-        aa_info = QLabel("Select amino acids that must be present in the fragment sequence (any one is sufficient):")
+        aa_info = QLabel(
+            "Select amino acids that must be present in the fragment sequence (any one is sufficient):"
+        )
         aa_info.setWordWrap(True)
-        aa_info.setStyleSheet(f"color: {EditorConstants.DISABLED_COLOR()}; font-size: 11px;")
+        aa_info.setStyleSheet(
+            f"color: {EditorConstants.DISABLED_COLOR()}; font-size: 11px;"
+        )
         aa_layout.addWidget(aa_info)
 
         # Scrollable grid of amino acids
@@ -191,11 +224,14 @@ class RestrictionDelegate(QStyledItemDelegate):
 
     def editorEvent(self, event, model, option, index):
         from PyQt6.QtCore import QEvent
+
         if event.type() == QEvent.Type.MouseButtonDblClick:
             current_value = model.data(index, Qt.ItemDataRole.EditRole) or ""
             dlg = RestrictionDialog(current_value, option.widget)
             if dlg.exec() == QDialog.DialogCode.Accepted:
-                model.setData(index, dlg.get_restriction_string(), Qt.ItemDataRole.EditRole)
+                model.setData(
+                    index, dlg.get_restriction_string(), Qt.ItemDataRole.EditRole
+                )
             return True
         return False
 
@@ -204,22 +240,22 @@ class BaseIonComboDelegate(QStyledItemDelegate):
     def __init__(self, base_ions, parent=None):
         super().__init__(parent)
         self.base_ions = base_ions  # e.g. ["b","y","a","c","x","z"]
-    
+
     def createEditor(self, parent, option, index):
         combo = QComboBox(parent)
         combo.addItems(self.base_ions)
         DelegateStyles.apply_combobox_style(combo)
         return combo
-    
+
     def setEditorData(self, editor, index):
         current_text = index.model().data(index, Qt.ItemDataRole.EditRole)
         idx = editor.findText(current_text)
         if idx >= 0:
             editor.setCurrentIndex(idx)
-    
+
     def setModelData(self, editor, model, index):
         model.setData(index, editor.currentText(), Qt.ItemDataRole.EditRole)
-    
+
     def updateEditorGeometry(self, editor, option, index):
         """Keep editor within cell bounds"""
         editor.setGeometry(option.rect)

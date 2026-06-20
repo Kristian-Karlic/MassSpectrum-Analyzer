@@ -21,15 +21,13 @@ class MetaMorpheusNormalizer(PSMNormalizer):
 
         result["Peptide"] = df["Base Sequence"]
         result["Modified Peptide"] = df["Full Sequence"].fillna("")
-        result["Charge"] = pd.to_numeric(
-            df["Precursor Charge"], errors="coerce"
-        ).fillna(0).astype(int)
+        result["Charge"] = (
+            pd.to_numeric(df["Precursor Charge"], errors="coerce").fillna(0).astype(int)
+        )
         result["Observed M/Z"] = pd.to_numeric(
             df["Precursor MZ"], errors="coerce"
         ).fillna(0.0)
-        result["Hyperscore"] = pd.to_numeric(
-            df["Score"], errors="coerce"
-        ).fillna(0.0)
+        result["Hyperscore"] = pd.to_numeric(df["Score"], errors="coerce").fillna(0.0)
         result["Protein"] = df["Accession"].fillna("")
         result["Peptide Length"] = df["Base Sequence"].str.len()
         result["Spectrum file"] = df["File Name"].fillna("")
@@ -40,8 +38,12 @@ class MetaMorpheusNormalizer(PSMNormalizer):
             .astype(str)
         )
 
-        result["Prev AA"] = df.get("Previous Residue", pd.Series("", index=df.index)).fillna("")
-        result["Next AA"] = df.get("Next Residue", pd.Series("", index=df.index)).fillna("")
+        result["Prev AA"] = df.get(
+            "Previous Residue", pd.Series("", index=df.index)
+        ).fillna("")
+        result["Next AA"] = df.get(
+            "Next Residue", pd.Series("", index=df.index)
+        ).fillna("")
 
         # Parse "[3 to 38]" → Protein Start / Protein End
         residue_range = df.get(

@@ -1,13 +1,20 @@
 import logging
-from typing import Optional
 
-import pyqtgraph as pg
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QCursor, QAction
-from PyQt6.QtWidgets import QMenu, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QComboBox, QCompleter
+from PyQt6.QtWidgets import (
+    QMenu,
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QLineEdit,
+    QComboBox,
+    QCompleter,
+)
 
 from ..classes.modification_item import ModificationItem
-from utils.style.style import EditorConstants
 
 logger = logging.getLogger(__name__)
 
@@ -18,28 +25,35 @@ class ModificationMixin:
     def set_available_modifications(self, modifications):
         """Set available modifications for the peptide widget"""
 
-        # Convert DataFrame or other formats to a consistent list of dicts
-        if hasattr(modifications, 'iterrows'):
-            # It's a DataFrame
+        # Convert DataFrame-like input or other formats to a consistent list of dicts
+        if hasattr(modifications, "itertuples") and hasattr(modifications, "columns"):
             self.available_modifications = []
-            for _, row in modifications.iterrows():
-                self.available_modifications.append({
-                    'Name': row.get('Name', ''),
-                    'Mass': row.get('Mass', 0)
-                })
+            columns = list(modifications.columns)
+            col_idx = {col: pos for pos, col in enumerate(columns, start=1)}
+            idx_name = col_idx.get("Name")
+            idx_mass = col_idx.get("Mass")
+            for row_tuple in modifications.itertuples(index=False, name=None):
+                self.available_modifications.append(
+                    {
+                        "Name": row_tuple[idx_name - 1] if idx_name is not None else "",
+                        "Mass": row_tuple[idx_mass - 1] if idx_mass is not None else 0,
+                    }
+                )
         elif isinstance(modifications, list):
             # It's already a list
             self.available_modifications = modifications
         else:
             self.available_modifications = []
 
-        logger.debug(f"Processed {len(self.available_modifications)} available modifications")
+        logger.debug(
+            f"Processed {len(self.available_modifications)} available modifications"
+        )
 
     def set_modifications(self, modifications: list):
         """Set current modifications and emit signal - FIXED to handle restoration vs new changes"""
 
         # Don't emit signal during data updates to prevent recursion
-        if getattr(self, '_updating_data', False):
+        if getattr(self, "_updating_data", False):
             self.current_interactive_mods = modifications
             # Still need to update the internal data structure during data updates
             if modifications:
@@ -48,10 +62,12 @@ class ModificationMixin:
                 self.modifications = {}
             return
 
-        if (hasattr(self, 'current_interactive_mods') and
-            self.current_interactive_mods == modifications and
-            modifications):  # Don't skip for empty modifications
-            logger.debug(f"Modifications unchanged - updating display only")
+        if (
+            hasattr(self, "current_interactive_mods")
+            and self.current_interactive_mods == modifications
+            and modifications
+        ):  # Don't skip for empty modifications
+            logger.debug("Modifications unchanged - updating display only")
             # Clear existing modifications
             self.modifications = {}
             # Process the modifications list
@@ -99,9 +115,9 @@ class ModificationMixin:
 
         for mod in self.available_modifications:
             try:
-                mod_mass = float(mod.get('Mass', 0))
+                mod_mass = float(mod.get("Mass", 0))
                 if abs(mod_mass - mass) < 0.01:
-                    return mod.get('Name', f"+{mass:.0f}")
+                    return mod.get("Name", f"+{mass:.0f}")
             except (ValueError, TypeError, AttributeError):
                 continue
 
@@ -109,7 +125,7 @@ class ModificationMixin:
 
     def get_modifications(self) -> list:
         """Get current modifications"""
-        return getattr(self, 'current_interactive_mods', [])
+        return getattr(self, "current_interactive_mods", [])
 
     def show_amino_acid_context_menu(self, position: int, event):
         """Show context menu for amino acid position - FIXED to match original"""
@@ -117,8 +133,8 @@ class ModificationMixin:
         # Find the associated text item and apply temporary emphasis
         text_item = None
         for item_data in self.amino_acid_items:
-            if item_data.get('position') == position:
-                text_item = item_data.get('item')
+            if item_data.get("position") == position:
+                text_item = item_data.get("item")
                 break
 
         if text_item:
@@ -130,13 +146,17 @@ class ModificationMixin:
         menu = QMenu()
 
         # Check if this position has modifications
-        has_modifications = position in self.modifications and self.modifications[position]
+        has_modifications = (
+            position in self.modifications and self.modifications[position]
+        )
         mod_count = len(self.modifications.get(position, []))
 
         # Add modification action (limit to 2)
         if mod_count < 2:
             add_action = QAction("Add Modification...", menu)
-            add_action.triggered.connect(lambda: self.show_modification_selector(position))
+            add_action.triggered.connect(
+                lambda: self.show_modification_selector(position)
+            )
             menu.addAction(add_action)
         else:
             # Show warning that max modifications reached
@@ -148,7 +168,9 @@ class ModificationMixin:
         if has_modifications:
             menu.addSeparator()
             delete_action = QAction("Delete All Modifications", menu)
-            delete_action.triggered.connect(lambda: self.delete_all_modifications_at_position(position))
+            delete_action.triggered.connect(
+                lambda: self.delete_all_modifications_at_position(position)
+            )
             menu.addAction(delete_action)
 
             # Individual modification deletion
@@ -156,7 +178,9 @@ class ModificationMixin:
                 location_text = "above" if i == 1 else "below"
                 delete_single_action = QAction(f"Delete {name} ({location_text})", menu)
                 delete_single_action.triggered.connect(
-                    lambda checked, m=mass, p=position: self.delete_single_modification(p, m)
+                    lambda checked, m=mass, p=position: self.delete_single_modification(
+                        p, m
+                    )
                 )
                 menu.addAction(delete_single_action)
 
@@ -187,14 +211,15 @@ class ModificationMixin:
     def show_modification_selector(self, position: int):
         """Show searchable modification selector dialog - FIXED to match original"""
 
-
         logger.debug(f"Showing modification selector for position {position}")
 
         # Check if we have available modifications
-        if (not hasattr(self, 'available_modifications') or
-            self.available_modifications is None or
-            len(self.available_modifications) == 0):
-            print("[DEBUG] No available modifications found")
+        if (
+            not hasattr(self, "available_modifications")
+            or self.available_modifications is None
+            or len(self.available_modifications) == 0
+        ):
+            logger.debug("No available modifications found")
             return
 
         dialog = QDialog(self)
@@ -220,8 +245,8 @@ class ModificationMixin:
         # Populate with available modifications
         mod_names = []
         for mod in self.available_modifications:
-            name = mod.get('Name', 'Unknown')
-            mass = mod.get('Mass', 0)
+            name = mod.get("Name", "Unknown")
+            mass = mod.get("Mass", 0)
             display_name = f"{name} (+{mass})"
             mod_selector.addItem(display_name, mod)
             mod_names.append(display_name)
@@ -239,8 +264,8 @@ class ModificationMixin:
 
             search_lower = search_text.lower()
             for mod in self.available_modifications:
-                name = mod.get('Name', 'Unknown')
-                mass = mod.get('Mass', 0)
+                name = mod.get("Name", "Unknown")
+                mass = mod.get("Mass", 0)
                 display_name = f"{name} (+{mass})"
 
                 if search_lower in name.lower() or search_lower in str(mass):
@@ -257,15 +282,17 @@ class ModificationMixin:
             """Add the selected modification from the dialog"""
             current_data = mod_selector.currentData()
             if current_data:
-                mass = float(current_data.get('Mass', 0))
-                name = current_data.get('Name', f"+{mass}")
+                mass = float(current_data.get("Mass", 0))
+                name = current_data.get("Name", f"+{mass}")
                 success = self.add_modification(position, mass, name)
                 if success:
                     dialog.accept()
                 else:
-                    logger.warning(f"Failed to add modification {name} at position {position}")
+                    logger.warning(
+                        f"Failed to add modification {name} at position {position}"
+                    )
             else:
-                print("[WARNING] No modification selected")
+                logger.warning("No modification selected")
 
         add_button = QPushButton("Add")
         add_button.clicked.connect(add_selected_modification)
@@ -281,7 +308,9 @@ class ModificationMixin:
         dialog.exec()
 
     # ADD: Missing modification visual methods
-    def add_modification_visual(self, position: int, mass: float, name: str, color: QColor, mod_index: int = 0):
+    def add_modification_visual(
+        self, position: int, mass: float, name: str, color: QColor, mod_index: int = 0
+    ):
         """Add a visual modification item with stacking support (max 2 per position) - FIXED like original"""
         x_pos = self.get_position_x(position)
         if x_pos is None:
@@ -294,7 +323,7 @@ class ModificationMixin:
             y_pos = -120  # Below the peptide sequence
         elif mod_index == 1:
             # Second modification goes above the peptide sequence (like original)
-            y_pos = 120   # Above the peptide sequence
+            y_pos = 120  # Above the peptide sequence
         else:
             # If somehow more than 2 modifications, stack below with offset (like original)
             y_pos = -120 - ((mod_index - 1) * 15)
@@ -332,17 +361,23 @@ class ModificationMixin:
 
     def handle_modification_removed(self, position: int, mass: float):
         """Handle when a modification is removed - FIXED to properly handle last modification"""
-        logger.debug(f"handle_modification_removed called: position={position}, mass={mass}")
+        logger.debug(
+            f"handle_modification_removed called: position={position}, mass={mass}"
+        )
 
         if position in self.modifications:
             mods = self.modifications[position]
             for i, (mod_mass, name) in enumerate(mods):
                 if abs(mod_mass - mass) < 0.01:
-                    logger.debug(f"Removing modification {name} from position {position}")
+                    logger.debug(
+                        f"Removing modification {name} from position {position}"
+                    )
                     mods.pop(i)
                     if not mods:  # If no more mods at this position
                         del self.modifications[position]
-                        logger.debug(f"Removed empty modification list for position {position}")
+                        logger.debug(
+                            f"Removed empty modification list for position {position}"
+                        )
                     break
 
         logger.debug(f"Remaining modifications after removal: {self.modifications}")
@@ -353,20 +388,22 @@ class ModificationMixin:
             for mass, name in mods:
                 self.current_interactive_mods.append((mass, pos))
 
-        logger.debug(f"Updated current_interactive_mods: {self.current_interactive_mods}")
+        logger.debug(
+            f"Updated current_interactive_mods: {self.current_interactive_mods}"
+        )
 
         self.emit_modifications_changed()
 
         #  Force visual refresh to ensure everything is cleared when empty
         if not self.modifications:
-            print("[DEBUG] No modifications remaining - forcing complete visual refresh")
+            logger.debug("No modifications remaining - forcing complete visual refresh")
             # Clear all modification items manually
             for mod_item in self.modification_items:
                 self.peptide_plot.removeItem(mod_item)
             self.modification_items.clear()
 
             # Update legend to show "None"
-            if hasattr(self, 'legend'):
+            if hasattr(self, "legend"):
                 self.legend.update_legend({}, [])
 
     def set_nl_legend_info(self, entries: list):
@@ -376,7 +413,9 @@ class ModificationMixin:
 
     def update_modification_display(self):
         """Update the display of modifications with color coding and stacking - FIXED for last modification removal"""
-        logger.debug(f"Updating modification display with {len(self.modifications)} positions")
+        logger.debug(
+            f"Updating modification display with {len(self.modifications)} positions"
+        )
 
         # Clear existing modification items FIRST
         for mod_item in self.modification_items:
@@ -384,9 +423,13 @@ class ModificationMixin:
         self.modification_items.clear()
 
         # ALWAYS update legend first, even if modifications is empty
-        if hasattr(self, 'legend'):
-            self.legend.update_legend(self.modifications, getattr(self, 'nl_legend_entries', []))
-            logger.debug(f"Legend updated with {len(self.modifications)} modification positions")
+        if hasattr(self, "legend"):
+            self.legend.update_legend(
+                self.modifications, getattr(self, "nl_legend_entries", [])
+            )
+            logger.debug(
+                f"Legend updated with {len(self.modifications)} modification positions"
+            )
 
         # Only add visual items if we have modifications
         if self.modifications:
@@ -399,18 +442,22 @@ class ModificationMixin:
 
                 for i, (mass, name) in enumerate(visible_mods):
                     # Get color from legend
-                    if hasattr(self, 'legend'):
+                    if hasattr(self, "legend"):
                         color = self.legend.get_color_for_mass(mass)
                     else:
                         color = QColor(255, 100, 100)  # Fallback
 
-                    self.add_modification_visual(position, mass, name, color, mod_index=i)
+                    self.add_modification_visual(
+                        position, mass, name, color, mod_index=i
+                    )
 
                 # If there are more than 2 modifications, show a warning
                 if len(mods) > 2:
-                    logger.warning(f"Position {position} has {len(mods)} modifications. Only showing first 2.")
+                    logger.warning(
+                        f"Position {position} has {len(mods)} modifications. Only showing first 2."
+                    )
         else:
-            print("[DEBUG] No modifications to display - visual elements cleared")
+            logger.debug("No modifications to display - visual elements cleared")
 
         logger.debug(f"Added {len(self.modification_items)} modification visual items")
 
@@ -420,7 +467,9 @@ class ModificationMixin:
             self.modifications[position] = []
 
         if len(self.modifications[position]) >= 2:
-            logger.warning(f"Cannot add modification to position {position}. Maximum 2 modifications per position.")
+            logger.warning(
+                f"Cannot add modification to position {position}. Maximum 2 modifications per position."
+            )
             return False
 
         self.modifications[position].append((mass, name))
@@ -443,8 +492,8 @@ class ModificationMixin:
         self.modificationsChanged.emit(mod_list)
 
         #  Ensure parent GUI updates when modifications become empty
-        if not mod_list and hasattr(self.parent(), 'handle_modifications_changed'):
-            print("[DEBUG] Forcing parent GUI update for empty modifications")
+        if not mod_list and hasattr(self.parent(), "handle_modifications_changed"):
+            logger.debug("Forcing parent GUI update for empty modifications")
             self.parent().handle_modifications_changed([])
 
     def delete_all_modifications_at_position(self, position: int):
@@ -456,9 +505,11 @@ class ModificationMixin:
 
     def _restore_modifications_display(self):
         """Force restore modifications display after data plotting - FIXED to prevent double execution"""
-        if (hasattr(self, 'current_interactive_mods') and
-            self.current_interactive_mods and
-            self.modifications):
+        if (
+            hasattr(self, "current_interactive_mods")
+            and self.current_interactive_mods
+            and self.modifications
+        ):
             # Clear and rebuild
             self.modifications = {}
             self._update_modifications_data(self.current_interactive_mods)

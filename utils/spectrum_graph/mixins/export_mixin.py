@@ -1,17 +1,15 @@
 import logging
 import os
-import re
 
 import pandas as pd
 import pyqtgraph as pg
-from pyqtgraph.exporters import SVGExporter
 
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QPdfWriter, QPainter, QPageSize, QPageLayout
+from PyQt6.QtCore import QSizeF, QRectF, QMarginsF
 from PyQt6.QtWidgets import QMessageBox
 
 from ..config.constants import PlotConstants
 from ..config.file_utils import get_save_filename, save_dataframe_to_file
-from utils.style.style import EditorConstants
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +19,11 @@ class ExportMixin:
 
     def export_matched_fragments(self):
         """Export matched fragments data"""
-        if not hasattr(self, 'matched_df') or self.matched_df is None or self.matched_df.empty:
+        if (
+            not hasattr(self, "matched_df")
+            or self.matched_df is None
+            or self.matched_df.empty
+        ):
             QMessageBox.warning(self, "Warning", "No matched fragments data to export.")
             return
 
@@ -35,7 +37,7 @@ class ExportMixin:
             self,
             "Export Matched Fragments",
             default_filename,
-            "CSV files (*.csv);;Excel files (*.xlsx);;All files (*.*)"
+            "CSV files (*.csv);;Excel files (*.xlsx);;All files (*.*)",
         )
 
         if filename:
@@ -43,8 +45,14 @@ class ExportMixin:
 
     def export_theoretical_fragments(self):
         """Export theoretical fragments data"""
-        if not hasattr(self, 'theoretical_df') or self.theoretical_df is None or self.theoretical_df.empty:
-            QMessageBox.warning(self, "Warning", "No theoretical fragments data to export.")
+        if (
+            not hasattr(self, "theoretical_df")
+            or self.theoretical_df is None
+            or self.theoretical_df.empty
+        ):
+            QMessageBox.warning(
+                self, "Warning", "No theoretical fragments data to export."
+            )
             return
 
         default_filename = self.generate_default_filename()
@@ -57,16 +65,25 @@ class ExportMixin:
             self,
             "Export Theoretical Fragments",
             default_filename,
-            "CSV files (*.csv);;Excel files (*.xlsx);;All files (*.*)"
+            "CSV files (*.csv);;Excel files (*.xlsx);;All files (*.*)",
         )
 
         if filename:
-            save_dataframe_to_file(self, self.theoretical_df, filename, "Theoretical Fragments")
+            save_dataframe_to_file(
+                self, self.theoretical_df, filename, "Theoretical Fragments"
+            )
 
     def export_all_data(self):
         """Export all data (details, matched, theoretical) to Excel with multiple sheets"""
-        if ((not hasattr(self, 'matched_df') or self.matched_df is None or self.matched_df.empty) and
-            (not hasattr(self, 'theoretical_df') or self.theoretical_df is None or self.theoretical_df.empty)):
+        if (
+            not hasattr(self, "matched_df")
+            or self.matched_df is None
+            or self.matched_df.empty
+        ) and (
+            not hasattr(self, "theoretical_df")
+            or self.theoretical_df is None
+            or self.theoretical_df.empty
+        ):
             QMessageBox.warning(self, "Warning", "No data to export.")
             return
 
@@ -80,221 +97,214 @@ class ExportMixin:
             self,
             "Export All Data",
             default_filename,
-            "Excel files (*.xlsx);;CSV files (*.csv)"
+            "Excel files (*.xlsx);;CSV files (*.csv)",
         )
 
         if filename:
             self._export_all_data_to_file(filename)
 
-    def export_combined_svg_and_data(self):
-        """Export both SVG and all data with the same base filename"""
+    def _export_pdf_to_file(self, filename):
+        """Render the visible spectrum viewer to a vector PDF.
 
+        Two critical design choices keep fonts and layout identical to the screen:
 
-        # Check if we have data to export
-        has_data = ((hasattr(self, 'matched_df') and self.matched_df is not None and not self.matched_df.empty) or
-                    (hasattr(self, 'theoretical_df') and self.theoretical_df is not None and not self.theoretical_df.empty))
+        1. Resolution = 96 DPI (screen DPI).
+           scene.render() maps source→target with a scale = target_px / source_px.
+           At 300 DPI the target is 3.125× the source, so Qt multiplies every font's
+           point size by 3.125 before laying it out → axis labels appear ~25 pt instead
+           of 8 pt.  At 96 DPI the scale is 1.0, so fonts stay at their intended size.
+           The PDF is still fully vector (all shapes and text stored as outlines) so it
+           is infinitely scalable in any viewer.
 
-        if not has_data:
-            QMessageBox.warning(self, "Warning", "No data to export.")
+        2. Source rect = mapToScene(viewport), NOT scene.sceneRect().
+           PyQtGraph's sceneRect() returns the union of every item's bounding box.
+           Data items (peaks, scatter) report their bounding boxes in data coordinates
+           (m/z 0–2500, intensity 0–100), making sceneRect() vastly larger than the
+           visible layout.  Mapping the viewport pixel rect to scene coordinates gives
+           the exact visible region.
+        """
+        try:
+            # Source rect: the portion of the scene that the viewport actually shows.
+            viewport = self.glw.viewport()
+            scene_visible = self.glw.mapToScene(viewport.rect()).boundingRect()
+
+            # Page size in mm so that at 96 DPI the device-pixel count equals the
+            # viewport pixel count → scale = 1.0 → no font distortion.
+            SCREEN_DPI = 96.0
+            MM_PER_INCH = 25.4
+            width_mm = viewport.width() / SCREEN_DPI * MM_PER_INCH
+            height_mm = viewport.height() / SCREEN_DPI * MM_PER_INCH
+
+            writer = QPdfWriter(filename)
+            writer.setResolution(int(SCREEN_DPI))
+            writer.setPageLayout(
+                QPageLayout(
+                    QPageSize(QSizeF(width_mm, height_mm), QPageSize.Unit.Millimeter),
+                    QPageLayout.Orientation.Portrait,
+                    QMarginsF(0.0, 0.0, 0.0, 0.0),
+                )
+            )
+
+            # Enable export mode on all PyQtGraph items that support it.
+            # PlotCurveItem: disables minimum-size / downsampling optimisations that
+            #   can cause thin lines (fragment indicators) to disappear at screen DPI.
+            # ScatterPlotItem: re-renders symbol pixmaps at resolutionScale × native,
+            #   eliminating the blurry/pixelated scatter points in the error plot.
+            scene = self.glw.scene()
+            export_items = []
+            for item in scene.items():
+                if hasattr(item, "setExportMode"):
+                    try:
+                        # ScatterPlotItem: resolutionScale physically enlarges the
+                        # rendered symbol pixmap, so omit it to keep correct sizes.
+                        # The fresh pixmap cache from setExportMode alone fixes quality.
+                        # PlotCurveItem (fragment lines): antialias enables path drawing.
+                        if isinstance(item, pg.ScatterPlotItem):
+                            item.setExportMode(True, {"antialias": True})
+                        else:
+                            item.setExportMode(
+                                True, {"antialias": True, "resolutionScale": 2.0}
+                            )
+                        export_items.append(item)
+                    except Exception:
+                        pass
+
+            # writer.width() == viewport.width() at 96 DPI → 1:1 scale.
+            painter = QPainter(writer)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            scene.render(
+                painter,
+                QRectF(0.0, 0.0, writer.width(), writer.height()),
+                scene_visible,
+            )
+            # Draw legend via direct QPainter calls — bypasses pg.TextItem's
+            # resetTransform() path that encodes text with an unusual PDF transform,
+            # causing text to be invisible in Affinity's edit mode.
+            self._draw_pdf_legend(painter, scene_visible, writer)
+            painter.end()
+
+            for item in export_items:
+                try:
+                    item.setExportMode(False)
+                except Exception:
+                    pass
+
+            logger.debug("PDF exported to: %s", filename)
+        except Exception as e:
+            raise Exception(f"PDF export failed: {str(e)}")
+
+    def _draw_pdf_legend(self, painter, scene_visible, writer):
+        """Draw the modification legend directly via QPainter after scene.render().
+
+        Bypasses pg.TextItem's resetTransform() which causes legend text to be
+        invisible in Affinity's edit mode when rendered through scene.render().
+        Text is drawn with painter.drawText() so it remains live/editable in PDF viewers.
+        """
+        if not hasattr(self, "legend") or not self.legend:
             return
 
-        # Get base filename for both exports
-        default_filename = self.generate_default_filename()
-        if not default_filename:
-            default_filename = "fragment_export"
+        from PyQt6.QtGui import QColor, QFont, QFontMetrics, QBrush, QPen
+        from PyQt6.QtCore import QRectF
 
-        filename = get_save_filename(
-            self,
-            "Export SVG + All Data (will create 2 files)",
-            default_filename,
-            "All files (*)"
-        )
+        black = QColor(0, 0, 0)
+        font_bold = QFont(PlotConstants.DEFAULT_FONT_FAMILY, 8)
+        font_bold.setBold(True)
+        font_normal = QFont(PlotConstants.DEFAULT_FONT_FAMILY, 8)
+        box_h = 10
+        fm_b = QFontMetrics(font_bold)
 
-        if filename:
-            try:
-                # Remove any extension to get base name
-                base_name = os.path.splitext(filename)[0]
+        sx = writer.width() / scene_visible.width()
+        sy = writer.height() / scene_visible.height()
 
-                # Export SVG with _spectrum suffix
-                svg_filename = f"{base_name}_spectrum.svg"
-                self._export_svg_to_file(svg_filename)
-
-                # Export data with _data suffix
-                data_filename = f"{base_name}_data.xlsx"
-                self._export_all_data_to_file(data_filename)
-
-                QMessageBox.information(
-                    self,
-                    "Success",
-                    f"Files exported successfully:\n• {svg_filename}\n• {data_filename}"
-                )
-
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to export files:\n{str(e)}")
-
-
-    def _export_svg_to_file(self, filename):
-        """Export SVG to specific filename with legend included"""
-        legend_items = []
-        annotation_backup = []
         try:
-            # Swap annotation text items to HTML format before SVG export.
-            # Unicode superscript characters ⁺ (U+207A, Superscripts block) and ² / ³
-            # (U+00B2/U+00B3, Latin-1 Supplement) are in different Unicode ranges. Qt's
-            # text shaper can split them into separate font runs, and QSvgGenerator then
-            # serialises each run with its own x-coordinates, producing a visible gap
-            # between + and the digit in the exported SVG. Using HTML <sup>+2</sup>
-            # keeps + and 2 as plain ASCII in one font run, so no gap appears.
-            annotation_backup = self._swap_to_html_annotations()
+            pr = self.peptide_plot.sceneBoundingRect()
+            vb_rect = self.peptide_plot.getViewBox().sceneBoundingRect()
+            x0 = (vb_rect.left() - scene_visible.left()) * sx + 6
+            pr_top_pdf = (pr.top() - scene_visible.top()) * sy
+            vb_top_pdf = (vb_rect.top() - scene_visible.top()) * sy
+            y0 = vb_top_pdf - fm_b.descent() - 0.4
+        except Exception:
+            x0, y0, pr_top_pdf, vb_top_pdf = 8, 14, 0, 20
 
-            # Add legend text items to the peptide plot temporarily
-            legend_items = self._add_legend_to_scene()
+        # White strip covers only the axis margin (plot-item top → viewbox top).
+        # Staying above the viewbox prevents the strip from clipping fragment
+        # indicator brackets whose tops reach the very top of the data area.
+        margin_h = vb_top_pdf - pr_top_pdf
+        if margin_h > 0:
+            painter.fillRect(
+                QRectF(0.0, float(pr_top_pdf), float(writer.width()), float(margin_h)),
+                QColor(255, 255, 255),
+            )
 
-            # Export the scene
-            exporter = SVGExporter(self.glw.scene())
-            exporter.export(filename)
-            logger.debug(f"SVG exported to: {filename}")
+        painter.setPen(black)
 
-        except Exception as e:
-            raise Exception(f"SVG export failed: {str(e)}")
-        finally:
-            # Always remove legend items and restore Unicode annotations after export
-            self._remove_legend_from_scene(legend_items)
-            self._restore_unicode_annotations(annotation_backup)
+        def pt(x, y, text, fnt):
+            painter.setFont(fnt)
+            painter.drawText(int(x), int(y), text)
 
-    def _swap_to_html_annotations(self):
-        """Temporarily replace Unicode annotation text with HTML-tagged equivalents on all
-        matched text items. Returns a list of (item, original_html) tuples for restoration."""
-        backup = []
-        for item in getattr(self, 'matched_items', []):
-            html_annotation = getattr(item, '_html_annotation', None)
-            if html_annotation is not None:
-                backup.append((item, item.toHtml()))
-                item.setHtml(html_annotation)
-        return backup
-
-    def _restore_unicode_annotations(self, backup):
-        """Restore original Unicode annotation HTML on text items after SVG export."""
-        for item, original_html in backup:
-            item.setHtml(original_html)
-
-    def _add_legend_to_scene(self):
-        """Add modification legend as graphics items to the peptide plot for SVG export.
-
-        Everything is placed on a single horizontal row so there is no risk of
-        vertical overlap with other content regardless of the plot's pixel height.
-        """
-        legend_items = []
-
-        if not hasattr(self, 'legend') or not self.legend:
-            return legend_items
-
-        y_pos = 170   # Near top of peptide plot (y range -200 to 200)
-        x_offset = 5
-
-        # --- Modification colours ---
         if not self.legend.modification_colors:
-            text_item = pg.TextItem(
-                text="Modifications: None",
-                color=EditorConstants.TEXT_COLOR(),
-                anchor=(0, 0.5)
-            )
-            text_item.setFont(QFont(PlotConstants.DEFAULT_FONT_FAMILY, 10))
-            text_item.setPos(x_offset, y_pos)
-            self.peptide_plot.addItem(text_item)
-            legend_items.append(text_item)
-            x_offset += len("Modifications: None") * 2 + 2
-        else:
-            title_item = pg.TextItem(
-                text="Modifications:",
-                color=EditorConstants.TEXT_COLOR(),
-                anchor=(0, 0.5)
-            )
-            title_item.setFont(QFont(PlotConstants.DEFAULT_FONT_FAMILY, 10, QFont.Weight.Bold))
-            title_item.setPos(x_offset, y_pos)
-            self.peptide_plot.addItem(title_item)
-            legend_items.append(title_item)
+            pt(x0, y0, "Modifications: None", font_bold)
+            return
 
-            x_offset += 80
+        label = "Modifications:  "
+        pt(x0, y0, label, font_bold)
+        x = x0 + QFontMetrics(font_bold).horizontalAdvance(label)
 
-            for mass, (color, name, count) in sorted(self.legend.modification_colors.items()):
-                color_box = pg.ScatterPlotItem(
-                    pos=[(x_offset, y_pos)],
-                    size=12,
-                    brush=pg.mkBrush(color),
-                    pen=pg.mkPen(EditorConstants.TEXT_COLOR(), width=1),
-                    symbol='s'
-                )
-                self.peptide_plot.addItem(color_box)
-                legend_items.append(color_box)
+        fm = QFontMetrics(font_normal)
 
-                x_offset += 4
-
-                mod_text = f"{name} (×{count})" if count > 1 else name
-                text_item = pg.TextItem(
-                    text=mod_text,
-                    color=EditorConstants.TEXT_COLOR(),
-                    anchor=(0, 0.5)
-                )
-                text_item.setFont(QFont(PlotConstants.DEFAULT_FONT_FAMILY, 10))
-                text_item.setPos(x_offset, y_pos)
-                self.peptide_plot.addItem(text_item)
-                legend_items.append(text_item)
-
-                x_offset += len(mod_text) * 6 + 8
-
-        # --- NL / labile / remainder symbol entries (same row, separated by " | ") ---
-        nl_entries = getattr(self, 'nl_legend_entries', [])
-        if nl_entries:
-            sep_item = pg.TextItem(
-                text=" | ",
-                color=EditorConstants.TEXT_COLOR(),
-                anchor=(0, 0.5)
-            )
-            sep_item.setFont(QFont(PlotConstants.DEFAULT_FONT_FAMILY, 10))
-            sep_item.setPos(x_offset, y_pos)
-            self.peptide_plot.addItem(sep_item)
-            legend_items.append(sep_item)
-            x_offset += 15
-
-            for symbol, label, mass_da, mod_name in nl_entries:
-                sign = "+" if mass_da >= 0 else ""
-                entry_text = f"{symbol} = {sign}{mass_da:.3f} Da ({mod_name}, {label})"
-                nl_item = pg.TextItem(
-                    text=entry_text,
-                    color=EditorConstants.TEXT_COLOR(),
-                    anchor=(0, 0.5)
-                )
-                nl_item.setFont(QFont(PlotConstants.DEFAULT_FONT_FAMILY, 10))
-                nl_item.setPos(x_offset, y_pos)
-                self.peptide_plot.addItem(nl_item)
-                legend_items.append(nl_item)
-                x_offset += len(entry_text) * 6 + 6
-
-        return legend_items
-
-    def _remove_legend_from_scene(self, legend_items):
-        """Remove temporary legend items from the scene after SVG export"""
-        for item in legend_items:
+        for _mass, (color, name, count) in sorted(
+            self.legend.modification_colors.items()
+        ):
             try:
-                self.peptide_plot.removeItem(item)
+                qc = (
+                    color
+                    if isinstance(color, QColor)
+                    else (
+                        QColor(*color)
+                        if isinstance(color, (list, tuple))
+                        else QColor(color)
+                    )
+                )
             except Exception:
-                pass  # Ignore removal errors
+                qc = QColor(128, 128, 128)
+
+            painter.setBrush(QBrush(qc))
+            painter.setPen(QPen(black, 0.5))
+            painter.drawRect(int(x), int(y0 - box_h + 2), box_h, box_h)
+            painter.setPen(black)
+            x += box_h + 3
+
+            mod_text = f"{name} (×{count})  " if count > 1 else f"{name}  "
+            pt(x, y0, mod_text, font_normal)
+            x += fm.horizontalAdvance(mod_text)
+
+        nl_entries = getattr(self, "nl_legend_entries", [])
+        if nl_entries:
+            sep = "  |  "
+            pt(x, y0, sep, font_normal)
+            x += fm.horizontalAdvance(sep)
+            for symbol, lbl, mass_da, mod_name in nl_entries:
+                sign = "+" if mass_da >= 0 else ""
+                entry = f"{symbol} = {sign}{mass_da:.3f} Da ({mod_name}, {lbl})  "
+                pt(x, y0, entry, font_normal)
+                x += fm.horizontalAdvance(entry)
 
     def _export_all_data_to_file(self, filename):
         """Export all data to specific filename"""
 
         # Get selected row data
         selected_row_df = None
-        if hasattr(self, 'row_data') and self.row_data:
+        if hasattr(self, "row_data") and self.row_data:
             selected_row_df = pd.DataFrame([self.row_data])
 
         # Get peptide info export data from the annotation tab
         peptide_info_df = None
         try:
             from utils.utility_classes.widgets import get_main_window
-            main_window = get_main_window(self, 'mass_spec_viewer')
-            if main_window and hasattr(main_window, 'annotation_tab_manager'):
+
+            main_window = get_main_window(self, "mass_spec_viewer")
+            if main_window and hasattr(main_window, "annotation_tab_manager"):
                 piw = main_window.annotation_tab_manager.peptide_info_widget
                 if piw:
                     export_data = piw.get_export_data()
@@ -304,28 +314,44 @@ class ExportMixin:
             pass
 
         try:
-            if filename.endswith('.xlsx') or filename.endswith('.xls'):
+            if filename.endswith(".xlsx") or filename.endswith(".xls"):
                 # Save to Excel with multiple sheets
-                with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+                with pd.ExcelWriter(filename, engine="openpyxl") as writer:
 
                     # Sheet 1: Complete Details Data (selected row)
                     if selected_row_df is not None and not selected_row_df.empty:
-                        selected_row_df.to_excel(writer, sheet_name='Complete Details', index=False)
+                        selected_row_df.to_excel(
+                            writer, sheet_name="Complete Details", index=False
+                        )
 
                     # Sheet 2: Peptide Info (annotation summary, scores, ion counts/intensities)
                     if peptide_info_df is not None and not peptide_info_df.empty:
-                        peptide_info_df.to_excel(writer, sheet_name='Peptide Info', index=False)
+                        peptide_info_df.to_excel(
+                            writer, sheet_name="Peptide Info", index=False
+                        )
 
                     # Sheet 3: Matched Fragments
-                    if hasattr(self, 'matched_df') and self.matched_df is not None and not self.matched_df.empty:
-                        self.matched_df.to_excel(writer, sheet_name='Matched Fragments', index=False)
+                    if (
+                        hasattr(self, "matched_df")
+                        and self.matched_df is not None
+                        and not self.matched_df.empty
+                    ):
+                        self.matched_df.to_excel(
+                            writer, sheet_name="Matched Fragments", index=False
+                        )
 
                     # Sheet 4: Theoretical Fragments
-                    if hasattr(self, 'theoretical_df') and self.theoretical_df is not None and not self.theoretical_df.empty:
-                        self.theoretical_df.to_excel(writer, sheet_name='Theoretical Fragments', index=False)
+                    if (
+                        hasattr(self, "theoretical_df")
+                        and self.theoretical_df is not None
+                        and not self.theoretical_df.empty
+                    ):
+                        self.theoretical_df.to_excel(
+                            writer, sheet_name="Theoretical Fragments", index=False
+                        )
             else:
                 # Save as separate CSV files
-                base_name = filename.replace('.csv', '')
+                base_name = filename.replace(".csv", "")
 
                 # Complete details CSV
                 if selected_row_df is not None and not selected_row_df.empty:
@@ -338,46 +364,98 @@ class ExportMixin:
                     peptide_info_df.to_csv(peptide_info_filename, index=False)
 
                 # Matched fragments CSV
-                if hasattr(self, 'matched_df') and self.matched_df is not None and not self.matched_df.empty:
+                if (
+                    hasattr(self, "matched_df")
+                    and self.matched_df is not None
+                    and not self.matched_df.empty
+                ):
                     matched_filename = f"{base_name}_matched.csv"
                     self.matched_df.to_csv(matched_filename, index=False)
 
                 # Theoretical fragments CSV
-                if hasattr(self, 'theoretical_df') and self.theoretical_df is not None and not self.theoretical_df.empty:
+                if (
+                    hasattr(self, "theoretical_df")
+                    and self.theoretical_df is not None
+                    and not self.theoretical_df.empty
+                ):
                     theoretical_filename = f"{base_name}_theoretical.csv"
                     self.theoretical_df.to_csv(theoretical_filename, index=False)
 
         except Exception as e:
             raise Exception(f"Data export failed: {str(e)}")
 
-    def export_svg(self):
-        """Export the entire plot scene as SVG using PyQtGraph's built-in exporter"""
+    def export_pdf(self):
+        """Export the full plot scene as a vector PDF."""
         try:
-            # Get default filename with _spectrum suffix
             default_filename = self.generate_default_filename()
-            if default_filename:
-                default_filename += "_spectrum.svg"
-            else:
-                default_filename = "spectrum.svg"
+            default_filename = (
+                (default_filename + "_spectrum.pdf")
+                if default_filename
+                else "spectrum.pdf"
+            )
 
             filename = get_save_filename(
                 self,
-                "Export SVG",
+                "Export PDF",
                 default_filename,
-                "SVG files (*.svg);;All files (*.*)"
+                "PDF files (*.pdf);;All files (*.*)",
+            )
+            if filename:
+                self._export_pdf_to_file(filename)
+                QMessageBox.information(
+                    self, "Success", f"PDF exported to:\n{filename}"
+                )
+        except Exception as e:
+            logger.error(f"Failed to export PDF: {e}")
+            QMessageBox.warning(
+                self, "Export Error", f"Failed to export PDF:\n{str(e)}"
             )
 
-            if filename:
-                self._export_svg_to_file(filename)
-                QMessageBox.information(self, "Success", f"SVG exported to:\n{filename}")
+    def export_combined_pdf_and_data(self):
+        """Export both a vector PDF spectrum and all data (Excel) with a shared base name."""
+        has_data = (
+            hasattr(self, "matched_df")
+            and self.matched_df is not None
+            and not self.matched_df.empty
+        ) or (
+            hasattr(self, "theoretical_df")
+            and self.theoretical_df is not None
+            and not self.theoretical_df.empty
+        )
+        if not has_data:
+            QMessageBox.warning(self, "Warning", "No data to export.")
+            return
 
-        except Exception as e:
-            logger.error(f"Failed to export SVG: {e}")
-            QMessageBox.warning(self, "Export Error", f"Failed to export SVG:\n{str(e)}")
+        default_filename = self.generate_default_filename() or "fragment_export"
+        filename = get_save_filename(
+            self,
+            "Export PDF + All Data (will create 2 files)",
+            default_filename,
+            "All files (*)",
+        )
+        if filename:
+            try:
+                base_name = os.path.splitext(filename)[0]
+                self._export_pdf_to_file(f"{base_name}_spectrum.pdf")
+                self._export_all_data_to_file(f"{base_name}_data.xlsx")
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    f"Files exported successfully:\n• {base_name}_spectrum.pdf\n• {base_name}_data.xlsx",
+                )
+            except Exception as e:
+                QMessageBox.critical(
+                    self, "Error", f"Failed to export files:\n{str(e)}"
+                )
 
     def generate_default_filename(self):
         """Generate a default filename based on peptide, spectrum file, and scan index"""
-        if not hasattr(self, 'peptide') or not self.peptide or not hasattr(self, 'row_data') or not self.row_data:
+        if (
+            not hasattr(self, "peptide")
+            or not self.peptide
+            or not hasattr(self, "row_data")
+            or not self.row_data
+        ):
             return "fragment_data"
 
         # Get peptide sequence (clean it for filename)
@@ -385,7 +463,14 @@ class ExportMixin:
 
         # Get spectrum file name (without extension)
         spectrum_file = ""
-        for key in ["Spectrum file", "spectrum_file", "Raw file", "raw_file", "File", "file"]:
+        for key in [
+            "Spectrum file",
+            "spectrum_file",
+            "Raw file",
+            "raw_file",
+            "File",
+            "file",
+        ]:
             if key in self.row_data and self.row_data[key]:
                 full_filename = str(self.row_data[key])
                 # Remove file extension and path

@@ -10,9 +10,17 @@ pick the correct one for each unrecognised file (or apply one choice to all).
 from __future__ import annotations
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
-    QPushButton, QCheckBox, QDialogButtonBox, QFrame, QScrollArea,
-    QWidget, QSizePolicy,
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QComboBox,
+    QCheckBox,
+    QDialogButtonBox,
+    QFrame,
+    QScrollArea,
+    QWidget,
+    QSizePolicy,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
@@ -102,16 +110,13 @@ class PSMUtilsFormatDialog(QDialog):
         root.addWidget(line2)
 
         # Skip-unknown hint
-        skip_hint = QLabel(
-            "Files with no format selected will be skipped."
-        )
+        skip_hint = QLabel("Files with no format selected will be skipped.")
         skip_hint.setStyleSheet("color: gray; font-style: italic;")
         root.addWidget(skip_hint)
 
         # Button box
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -148,9 +153,7 @@ class PSMUtilsFormatDialog(QDialog):
             for combo in self._format_combos[1:]:
                 combo.setCurrentIndex(first_index)
                 combo.setEnabled(False)
-            self._format_combos[0].currentIndexChanged.connect(
-                self._sync_all_combos
-            )
+            self._format_combos[0].currentIndexChanged.connect(self._sync_all_combos)
         else:
             for combo in self._format_combos[1:]:
                 combo.setEnabled(True)

@@ -9,9 +9,11 @@ from utils.mod_database.unknown_mods_dialog import UnknownModificationsDialog
 def __getattr__(name):
     if name == "ModDatabaseEditorDialog":
         from utils.mod_database.mod_database_editor import ModDatabaseEditorDialog
+
         return ModDatabaseEditorDialog
     if name == "CentralModEditorDialog":
         from utils.mod_database.mod_database_editor import CentralModEditorDialog
+
         return CentralModEditorDialog
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 

@@ -1,7 +1,9 @@
 # mass_spec_viewer_widget.py
 """Facade module — assembles MassSpecViewer from mixins."""
+
 import logging
 
+import numpy as np
 import pandas as pd
 from PyQt6.QtCore import pyqtSignal, QTimer
 from PyQt6.QtWidgets import QWidget, QSizePolicy
@@ -37,15 +39,13 @@ class MassSpecViewer(
 
     diagnosticIonSelected = pyqtSignal(float)
     modificationsChanged = pyqtSignal(list)
+    glycanSettingsChanged = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.persistent_tooltip = PersistentTooltip(self)
         self.setMinimumSize(400, 200)
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Expanding
-        )
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # Initialize attributes
         self._initialize_attributes()
@@ -71,8 +71,18 @@ class MassSpecViewer(
         self.peak_lines = []
         self.df = pd.DataFrame()
         self.text_annotation_threshold = 0
-        self.annotation_display_settings = {}  # {ion_key: {"visible": bool, "color": str|None}}
-        self._saved_annotation_positions = {}  # {(mz_round, ion_type, ion_number, charge): (x, y)}
+        self.annotation_display_settings = (
+            {}
+        )  # {ion_key: {"visible": bool, "color": str|None}}
+        self._saved_annotation_positions = (
+            {}
+        )  # {(mz_round, ion_type, ion_number, charge): (x, y)}
+        # Glycan Y-ion settings
+        self.glycan_y_enabled = False
+        self.glycan_composition_str = ""
+        self.glycan_max_charge = 4
+        self.use_snfg_shapes = False
+        self._glycan_compositions_list = []  # [(name, composition), ...]
         self.matched_df = None
         self.theoretical_df = None
         self.annotation_removal_history = []
@@ -100,7 +110,47 @@ class MassSpecViewer(
         # previous x-range (used when a brand-new scan is selected).
         self._new_scan_pending = False
 
-    def set_data(self, matched_data, peptide, mod_positions, row_data, theoretical_data=None):
+        # Y-axis mode and intensity filter
+        self.y_axis_mode = "relative"  # 'relative', 'raw', 'sqrt'
+        self.intensity_filter_enabled = False
+        self.intensity_filter_value = 50.0  # 50% for default relative mode; re-set on mode switch
+        self._spectrum_y_max = PlotConstants.SPECTRUM_Y_LIMIT
+
+    def _update_annotation_columns(self, use_snfg):
+        """Build both annotation columns in a single pass."""
+        if self.df.empty:
+            self.df["text_annotation"] = []
+            self.df["html_annotation"] = []
+            return
+
+        columns = list(self.df.columns)
+        idx_ion_series_type = (
+            columns.index("Ion Series Type") if "Ion Series Type" in columns else None
+        )
+
+        text_annotations = []
+        html_annotations = []
+        for row_tuple in self.df.itertuples(index=False, name=None):
+            row = dict(zip(columns, row_tuple))
+            is_glycan_y = (
+                idx_ion_series_type is not None
+                and row_tuple[idx_ion_series_type] == "GlycanY-Ion-Series"
+            )
+
+            if use_snfg and is_glycan_y:
+                snfg_annotation = HTMLFormatter.format_annotation_snfg(row)
+                text_annotations.append(snfg_annotation)
+                html_annotations.append(snfg_annotation)
+            else:
+                text_annotations.append(HTMLFormatter.format_annotation_unicode(row))
+                html_annotations.append(HTMLFormatter.format_annotation(row))
+
+        self.df["text_annotation"] = text_annotations
+        self.df["html_annotation"] = html_annotations
+
+    def set_data(
+        self, matched_data, peptide, mod_positions, row_data, theoretical_data=None
+    ):
         """Update the viewer with new data and re-plot"""
 
         # Prevent recursive updates during data setting
@@ -116,7 +166,7 @@ class MassSpecViewer(
         is_new_scan = self._new_scan_pending
         self._new_scan_pending = False
         spectrum_vb = self.spectrumplot.getViewBox()
-        if not is_new_scan and hasattr(self, 'df') and not self.df.empty:
+        if not is_new_scan and hasattr(self, "df") and not self.df.empty:
             try:
                 saved_x_range = spectrum_vb.viewRange()[0]
             except Exception:
@@ -127,7 +177,7 @@ class MassSpecViewer(
 
         # Store data
         self.df = matched_data.copy()
-        self.matched_df = matched_data.copy()
+        self.matched_df = matched_data
         self.theoretical_df = theoretical_data
         self.peptide = peptide
         self.row_data = row_data
@@ -136,13 +186,18 @@ class MassSpecViewer(
         self.df["Ion Number"] = self.df["Ion Number"].apply(HTMLFormatter.clean_number)
         self.df["Charge"] = self.df["Charge"].apply(HTMLFormatter.clean_number)
         self.df["Isotope"] = self.df["Isotope"].apply(HTMLFormatter.clean_number)
-        self.df["text_annotation"] = self.df.apply(HTMLFormatter.format_annotation_unicode, axis=1)
-        self.df["html_annotation"] = self.df.apply(HTMLFormatter.format_annotation, axis=1)
-        self.df["Relative Intensity"] = (self.df["intensity"] / self.df["intensity"].max()) * 100
+        use_snfg = getattr(self, "use_snfg_shapes", False)
+        self._update_annotation_columns(use_snfg)
+        max_intensity = self.df["intensity"].max()
+        if pd.notna(max_intensity) and max_intensity > 0:
+            self.df["Relative Intensity"] = (self.df["intensity"] / max_intensity) * 100
+        else:
+            self.df["Relative Intensity"] = 0.0
+        self.df["Sqrt Intensity"] = np.sqrt(self.df["intensity"])
 
         # Set up ranges for spectrum/error plots
-        data_min_mz = self.df['m/z'].min()
-        data_max_mz = self.df['m/z'].max()
+        data_min_mz = self.df["m/z"].min()
+        data_max_mz = self.df["m/z"].max()
         init_x_min = max(0, data_min_mz - 50)
         init_x_max = data_max_mz + 100
         self.initial_x_range = (init_x_min, init_x_max)
@@ -160,7 +215,7 @@ class MassSpecViewer(
         spectrum_vb.initial_y_range = (0, PlotConstants.SPECTRUM_Y_LIMIT)
         spectrum_vb.setYRange(0, PlotConstants.SPECTRUM_Y_LIMIT, padding=0)
 
-        if hasattr(error_vb, 'fixed_y_min') and hasattr(error_vb, 'fixed_y_max'):
+        if hasattr(error_vb, "fixed_y_min") and hasattr(error_vb, "fixed_y_max"):
             error_vb.initial_y_range = (error_vb.fixed_y_min, error_vb.fixed_y_max)
 
         spectrum_vb.reset_to_initial_ranges()
@@ -191,18 +246,22 @@ class MassSpecViewer(
         """Delayed plotting to ensure peptide widget is properly initialized"""
         try:
             # Plot peptide sequence with ions
-            self.plot_peptide_sequence_with_ions(self.peptide, getattr(self, 'current_interactive_mods', []))
+            self.plot_peptide_sequence_with_ions(
+                self.peptide, getattr(self, "current_interactive_mods", [])
+            )
 
             # Plot spectrum and error data
             self.plot_spectrum()
             self.plot_error_ppm()
 
-            if hasattr(self, 'current_interactive_mods') and self.current_interactive_mods:
+            if (
+                hasattr(self, "current_interactive_mods")
+                and self.current_interactive_mods
+            ):
                 # Force complete rebuild of modifications display
                 QTimer.singleShot(50, self._restore_modifications_display)
 
             self.hide_loading_indicator()
-
 
             self.update_undo_button_state()
 
@@ -213,3 +272,10 @@ class MassSpecViewer(
             logger.debug(f"Error in delayed plot data: {e}")
             self.hide_loading_indicator()
             self._updating_data = False
+
+    def _on_snfg_toggled(self, checked):
+        """Handle SNFG shapes toggle — re-renders annotations without re-fragmentation."""
+        self.use_snfg_shapes = checked
+        if not self.df.empty:
+            self._update_annotation_columns(checked)
+            self.plot_spectrum()

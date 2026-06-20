@@ -81,7 +81,7 @@ Extract multiple scans from a single file with reduced memory overhead (no indiv
 
 ---
 
-### `ultra_fast_extract_lightweight(input_file: str, max_workers: int = 6)`
+### `ultra_fast_extract_lightweight(input_file: str, max_workers: int | None = None)`
 
 Parallel extraction of scans from multiple files using ThreadPoolExecutor.
 
@@ -90,7 +90,9 @@ Parallel extraction of scans from multiple files using ThreadPoolExecutor.
   - `'file_path'` — Path to .raw or .mzML file
   - `'index'` — Scan number
   - Additional columns are preserved in output
-- `max_workers` (int, optional): Number of threads for parallel file extraction (default: 6)
+- `max_workers` (int | None, optional): Number of threads for parallel file extraction.
+  - `None` or `<= 0` uses adaptive auto-threading (`min(file_count, min(32, max(2, cpu_count*2)))`)
+  - positive values explicitly set the upper bound
 
 **Returns:**
 - `pd.DataFrame` — Results DataFrame with all input columns plus:
@@ -99,7 +101,7 @@ Parallel extraction of scans from multiple files using ThreadPoolExecutor.
   - `'header'` (str or None): Scan header
   - `'status'` (str): `'success'` or error message
   - `'num_peaks'` (int): Number of peaks
-  - sorted by `'index'` and reset to clean index
+  - sorted by `'file_path'`, then `'index'`, and reset to clean index
 
 **Use when:** Batch processing large numbers of scans from multiple files. Files are processed in parallel, one thread per file.
 

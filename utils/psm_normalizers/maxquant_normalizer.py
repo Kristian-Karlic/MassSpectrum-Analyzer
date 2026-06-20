@@ -24,11 +24,15 @@ class MaxQuantNormalizer(PSMNormalizer):
         result["Modified Peptide"] = df["Modified sequence"].apply(
             self._clean_modified_sequence
         )
-        result["Charge"] = pd.to_numeric(df["Charge"], errors="coerce").fillna(0).astype(int)
+        result["Charge"] = (
+            pd.to_numeric(df["Charge"], errors="coerce").fillna(0).astype(int)
+        )
         result["Observed M/Z"] = pd.to_numeric(df["m/z"], errors="coerce").fillna(0.0)
         result["Hyperscore"] = pd.to_numeric(df["Score"], errors="coerce").fillna(0.0)
         result["Protein"] = df["Proteins"].fillna("")
-        result["Peptide Length"] = pd.to_numeric(df["Length"], errors="coerce").fillna(0).astype(int)
+        result["Peptide Length"] = (
+            pd.to_numeric(df["Length"], errors="coerce").fillna(0).astype(int)
+        )
         result["Spectrum file"] = df["Raw file"].fillna("")
         result["index"] = df["Scan number"].astype(str)
 

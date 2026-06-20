@@ -4,6 +4,7 @@ from typing import List, Tuple, Any, Callable
 
 logger = logging.getLogger(__name__)
 
+
 class CSVLoader:
     """Utility class for loading CSV files with type conversion"""
 
@@ -11,7 +12,7 @@ class CSVLoader:
     def load_csv_with_conversion(
         path: str,
         columns: List[Tuple[str, Callable[[str], Any]]],
-        skip_on_error: bool = True
+        skip_on_error: bool = True,
     ) -> List[tuple]:
         """
         Loads data from a CSV file with specified column names and type conversions.
@@ -34,7 +35,7 @@ class CSVLoader:
         """
         results = []
 
-        with open(path, "r", newline='') as f:
+        with open(path, "r", newline="") as f:
             reader = csv.DictReader(f)
 
             for row in reader:
@@ -55,6 +56,7 @@ class CSVLoader:
 
         return results
 
+
 class DataGatherer:
     """Utility class for gathering data from loaded DataFrames"""
 
@@ -65,14 +67,16 @@ class DataGatherer:
 
         for ion_data in selected_custom_ions_data:
             try:
-                mass_offset = float(ion_data['Mass Offset'])
-                custom_ion_series_list.append({
-                    "name": ion_data['Series Name'],
-                    "base": ion_data['Base Ion'],
-                    "offset": mass_offset,
-                    "color": ion_data['Color'],
-                    "restriction": ion_data.get('Restriction', '')
-                })
+                mass_offset = float(ion_data["Mass Offset"])
+                custom_ion_series_list.append(
+                    {
+                        "name": ion_data["Series Name"],
+                        "base": ion_data["Base Ion"],
+                        "offset": mass_offset,
+                        "color": ion_data["Color"],
+                        "restriction": ion_data.get("Restriction", ""),
+                    }
+                )
             except (ValueError, KeyError) as e:
                 logger.warning(f"Skipping invalid custom ion series: {e}")
                 continue
@@ -86,10 +90,12 @@ class DataGatherer:
 
         for ion_data in selected_diagnostic_ions_data:
             try:
-                name = ion_data.get('Name', '')
-                html_name = ion_data.get('HTML Name', name)  # Use HTML Name, fallback to Name
-                mass = float(ion_data.get('Mass', 0.0))
-                color = ion_data.get('Color', '#000000')
+                name = ion_data.get("Name", "")
+                html_name = ion_data.get(
+                    "HTML Name", name
+                )  # Use HTML Name, fallback to Name
+                mass = float(ion_data.get("Mass", 0.0))
+                color = ion_data.get("Color", "#000000")
 
                 if name and mass > 0:  # Only include valid entries
                     result.append((html_name, mass, color))
@@ -100,8 +106,13 @@ class DataGatherer:
         return result
 
     @staticmethod
-    def build_mod_neutral_losses(modifications, central_mod_db, enable_labile=True,
-                                 enable_remainder=True, enable_mod_nl=True):
+    def build_mod_neutral_losses(
+        modifications,
+        central_mod_db,
+        enable_labile=True,
+        enable_remainder=True,
+        enable_mod_nl=True,
+    ):
         """Build per-modification neutral-loss configs from the central database.
 
         Args:
@@ -125,8 +136,9 @@ class DataGatherer:
             if nl_config is not None:
                 # Need the labile block to fire if either labile or remainder is requested
                 effective_labile = enable_labile or enable_remainder
-                if central_mod_db.has_active_neutral_loss(nl_config, effective_labile,
-                                                          enable_mod_nl=enable_mod_nl):
+                if central_mod_db.has_active_neutral_loss(
+                    nl_config, effective_labile, enable_mod_nl=enable_mod_nl
+                ):
                     cfg = dict(nl_config)
                     # labile_loss drives the block; suppress ~ ion separately via generate_labile_ion
                     if not effective_labile:
@@ -150,7 +162,7 @@ class DataGatherer:
         """Clean scan number string by removing .0 and leading zeros"""
         try:
             # Remove .0 if present
-            if scan_str.endswith('.0'):
+            if scan_str.endswith(".0"):
                 scan_str = scan_str[:-2]
 
             # Remove leading zeros but keep single zero

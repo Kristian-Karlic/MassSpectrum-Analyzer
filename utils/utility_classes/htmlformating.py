@@ -1,33 +1,75 @@
 import pandas as pd
 import re
+from utils.peak_matching.constants import (
+    SNFG_CLASSES as SHARED_SNFG_CLASSES,
+    load_snfg_shapes,
+)
+
 
 class HTMLFormatter:
     """Utility class for HTML formatting of mass spectrometry annotations"""
-    
+
+    # Shared SNFG shape palette: (unicode_shape, class_name)
+    SNFG_CLASSES = SHARED_SNFG_CLASSES
+
+    # Runtime map: monosaccharide short_code → unicode_shape, populated from the monosaccharide database.
+    # Keys are the short codes defined in the Monosaccharides table (e.g. 'N'→'▢', 'H'→'○').
+    # Updated at startup and after each monosaccharide save via update_snfg_shapes().
+    SNFG_SHAPE_MAP = load_snfg_shapes()
+
+    @classmethod
+    def update_snfg_shapes(cls, shape_map):
+        """Merge a {short_code: unicode_shape} dict into the class-level SNFG_SHAPE_MAP."""
+        cls.SNFG_SHAPE_MAP.update(shape_map)
+
     # Unicode character maps for subscripts and superscripts
     SUBSCRIPT_MAP = {
-        '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
-        '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
-        '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎'
+        "0": "₀",
+        "1": "₁",
+        "2": "₂",
+        "3": "₃",
+        "4": "₄",
+        "5": "₅",
+        "6": "₆",
+        "7": "₇",
+        "8": "₈",
+        "9": "₉",
+        "+": "₊",
+        "-": "₋",
+        "=": "₌",
+        "(": "₍",
+        ")": "₎",
     }
-    
+
     SUPERSCRIPT_MAP = {
-        '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
-        '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
-        '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
-        'n': 'ⁿ'
+        "0": "⁰",
+        "1": "¹",
+        "2": "²",
+        "3": "³",
+        "4": "⁴",
+        "5": "⁵",
+        "6": "⁶",
+        "7": "⁷",
+        "8": "⁸",
+        "9": "⁹",
+        "+": "⁺",
+        "-": "⁻",
+        "=": "⁼",
+        "(": "⁽",
+        ")": "⁾",
+        "n": "ⁿ",
     }
-    
+
     @staticmethod
     def to_subscript(text):
         """Convert text to Unicode subscript characters"""
-        return ''.join(HTMLFormatter.SUBSCRIPT_MAP.get(c, c) for c in str(text))
-    
+        return "".join(HTMLFormatter.SUBSCRIPT_MAP.get(c, c) for c in str(text))
+
     @staticmethod
     def to_superscript(text):
         """Convert text to Unicode superscript characters"""
-        return ''.join(HTMLFormatter.SUPERSCRIPT_MAP.get(c, c) for c in str(text))
-    
+        return "".join(HTMLFormatter.SUPERSCRIPT_MAP.get(c, c) for c in str(text))
+
     @staticmethod
     def clean_number(x):
         """
@@ -42,8 +84,79 @@ class HTMLFormatter:
                 return str(val)
         except Exception:
             return str(x)
+
     @staticmethod
-    def _format_annotation_with_formatter(row, fmt_sub, fmt_sup, fmt_loss):
+    def _format_glycan_bracket(composition, fmt_sub):
+        """Format a glycan composition string like 'N2H1' with subscripted numbers.
+
+        Returns e.g. 'N₂H₁' (Unicode) or 'N<sub>2</sub>H<sub>1</sub>' (HTML).
+        """
+        parts = re.findall(r"([A-Za-z]+)(\d+)", composition)
+        result = ""
+        for letter, count in parts:
+            result += letter + fmt_sub(count)
+        return result if result else composition
+
+    @staticmethod
+    def _format_glycan_bracket_snfg(composition, fmt_sub):
+        """Format a glycan composition string using SNFG Unicode shapes.
+
+        Returns HTML like '■<sub>2</sub>●<sub>1</sub>...'.
+        Falls back to plain letter for unknown monosaccharides.
+        """
+        parts = re.findall(r"([A-Za-z]+)(\d+)", composition)
+        result = ""
+        for letter, count in parts:
+            shape = HTMLFormatter.SNFG_SHAPE_MAP.get(letter, letter)
+            result += shape + f"<sub>{count}</sub>"
+        return result if result else composition
+
+    @staticmethod
+    def _format_glycan_y_annotation(
+        ion_type, ion_number, charge, fmt_sub, fmt_sup, use_snfg=False
+    ):
+        """Format a glycan Y-ion annotation with proper subscript/SNFG rendering.
+
+        Examples:
+          Y0          → Y₀  (bare peptide)
+          Y[N2H1]     → Y[N₂H₁]₃²⁺  (text) or Y[■₂●₁]₃²⁺  (SNFG)
+        """
+        charge_str = str(charge).strip()
+        ion_num_str = str(ion_number).strip()
+
+        if ion_type == "Y0":
+            annotation = "Y" + fmt_sub("0")
+            if charge_str != "1":
+                annotation += fmt_sup(f"+{charge_str}")
+            return annotation
+
+        bracket_match = re.match(r"^Y\[([^\]]+)\]$", ion_type)
+        if not bracket_match:
+            # Fallback: treat as plain text with ion number subscript
+            annotation = ion_type + fmt_sub(ion_num_str)
+            if charge_str != "1":
+                annotation += fmt_sup(f"+{charge_str}")
+            return annotation
+
+        composition = bracket_match.group(1)
+
+        annotation = "Y" + fmt_sub(ion_num_str)
+        if charge_str != "1":
+            annotation += fmt_sup(f"+{charge_str}")
+
+        if use_snfg:
+            annotation += HTMLFormatter._format_glycan_bracket_snfg(
+                composition, fmt_sub
+            )
+        else:
+            annotation += HTMLFormatter._format_glycan_bracket(composition, fmt_sub)
+
+        return annotation
+
+    @staticmethod
+    def _format_annotation_with_formatter(
+        row, fmt_sub, fmt_sup, fmt_loss, use_snfg=False
+    ):
         """
         Internal method to build annotation string with pluggable formatters.
 
@@ -52,6 +165,7 @@ class HTMLFormatter:
             fmt_sub: Function to format subscript (e.g., lambda x: f"<sub>{x}</sub>")
             fmt_sup: Function to format superscript (e.g., lambda x: f"<sup>{x}</sup>")
             fmt_loss: Function to format neutral loss (e.g., format_neutral_loss)
+            use_snfg: When True, replace monosaccharide letters with SNFG colored shapes
         """
         # Get the values (and strip any extra whitespace)
         ion_type = str(row["Ion Type"]).strip()
@@ -61,12 +175,22 @@ class HTMLFormatter:
         neutral_loss = row.get("Neutral Loss", None)
         ion_series_type = row.get("Ion Series Type", "Standard-Ion-Series")
 
+        # Glycan Y-ions get dedicated formatting with optional SNFG shapes
+        if ion_series_type == "GlycanY-Ion-Series":
+            return HTMLFormatter._format_glycan_y_annotation(
+                ion_type, ion_number, charge, fmt_sub, fmt_sup, use_snfg
+            )
+
         if not pd.isna(neutral_loss) and str(neutral_loss).strip() == "Custom_Ion":
             annotation = ion_type
             return annotation
 
         # Handle MH custom ion series case
-        if base_type == "MH" and not pd.isna(neutral_loss) and str(neutral_loss).strip() == "custom_ion_series":
+        if (
+            base_type == "MH"
+            and not pd.isna(neutral_loss)
+            and str(neutral_loss).strip() == "custom_ion_series"
+        ):
             annotation = f"{ion_type}"
             if charge != "1":
                 annotation += fmt_sup(f"+{charge}")
@@ -74,13 +198,13 @@ class HTMLFormatter:
 
         if base_type == "MH":
             # Check if ion_type already contains neutral loss information (e.g., "MH*-NH3")
-            mh_loss_match = re.match(r'^(.+)-(\d*)([A-Z0-9]+)$', ion_type)
+            mh_loss_match = re.match(r"^(.+)-(\d*)([A-Z0-9]+)$", ion_type)
 
             if mh_loss_match:
                 # This is a custom MH ion with neutral loss already in the ion_type
                 custom_mh_base = mh_loss_match.group(1)  # e.g., "MH*"
-                loss_count = mh_loss_match.group(2)      # e.g., ""
-                loss_type = mh_loss_match.group(3)       # e.g., "NH3"
+                loss_count = mh_loss_match.group(2)  # e.g., ""
+                loss_type = mh_loss_match.group(3)  # e.g., "NH3"
 
                 # Format the loss with count and subscripts
                 if loss_count and loss_count != "1":
@@ -92,7 +216,10 @@ class HTMLFormatter:
                 if charge == "1":
                     annotation = f"[{custom_mh_base}+H-{formatted_loss}]"
                 else:
-                    annotation = f"[{custom_mh_base}+{charge}H-{formatted_loss}]" + fmt_sup(f"+{charge}")
+                    annotation = (
+                        f"[{custom_mh_base}+{charge}H-{formatted_loss}]"
+                        + fmt_sup(f"+{charge}")
+                    )
 
             elif ion_type != "MH":
                 # This is a custom MH ion without embedded loss (e.g., "MH*")
@@ -103,12 +230,17 @@ class HTMLFormatter:
 
                 # Check for additional neutral loss only if not already embedded in ion_type
                 # Skip for Mod-NL-Series where the tag is already in ion_type
-                if ion_series_type != "Mod-NL-Series" and not (pd.isna(neutral_loss) or str(neutral_loss).strip() in ["", "None"]):
+                if ion_series_type != "Mod-NL-Series" and not (
+                    pd.isna(neutral_loss) or str(neutral_loss).strip() in ["", "None"]
+                ):
                     formatted_loss = fmt_loss(str(neutral_loss).strip())
                     if charge == "1":
                         annotation = f"[{ion_type}+H-{formatted_loss}]"
                     else:
-                        annotation = f"[{ion_type}+{charge}H-{formatted_loss}]" + fmt_sup(f"+{charge}")
+                        annotation = (
+                            f"[{ion_type}+{charge}H-{formatted_loss}]"
+                            + fmt_sup(f"+{charge}")
+                        )
             else:
                 # Standard MH formatting
                 if charge == "1":
@@ -117,12 +249,16 @@ class HTMLFormatter:
                     annotation = f"[M+{charge}H]" + fmt_sup(f"+{charge}")
 
                 # Check for neutral loss only for standard MH
-                if not (pd.isna(neutral_loss) or str(neutral_loss).strip() in ["", "None"]):
+                if not (
+                    pd.isna(neutral_loss) or str(neutral_loss).strip() in ["", "None"]
+                ):
                     formatted_loss = fmt_loss(str(neutral_loss).strip())
                     if charge == "1":
                         annotation = f"[M+H-{formatted_loss}]"
                     else:
-                        annotation = f"[M+{charge}H-{formatted_loss}]" + fmt_sup(f"+{charge}")
+                        annotation = f"[M+{charge}H-{formatted_loss}]" + fmt_sup(
+                            f"+{charge}"
+                        )
 
             return annotation
 
@@ -134,7 +270,7 @@ class HTMLFormatter:
             # For custom ions, the ion_type contains the custom name (e.g., "MyCustomIon-H2O")
 
             # Check if this is a custom ion with neutral loss
-            custom_loss_match = re.match(r'^(.+)-(\d*)([A-Z0-9]+)$', ion_type)
+            custom_loss_match = re.match(r"^(.+)-(\d*)([A-Z0-9]+)$", ion_type)
 
             if custom_loss_match:
                 # Extract: custom ion name, loss count, loss type
@@ -149,7 +285,9 @@ class HTMLFormatter:
                     formatted_loss = fmt_loss(loss_type)
 
                 # Build annotation for custom ion with loss
-                annotation = f"[{custom_ion_name}-{formatted_loss}]" + fmt_sub(ion_number)
+                annotation = f"[{custom_ion_name}-{formatted_loss}]" + fmt_sub(
+                    ion_number
+                )
 
             else:
                 # Custom ion without neutral loss
@@ -164,19 +302,25 @@ class HTMLFormatter:
         # MODIFICATION-SPECIFIC NEUTRAL LOSS HANDLING (*, **, ***, ~, ^)
         if ion_series_type == "Mod-NL-Series":
             # Check if ion_type has an embedded standard neutral loss (e.g. "y*-H2O", "b~-2NH3")
-            mod_nl_loss_match = re.match(r'^(.+)-(\d*)([A-Z][A-Z0-9]*)$', ion_type)
+            mod_nl_loss_match = re.match(r"^(.+)-(\d*)([A-Z][A-Z0-9]*)$", ion_type)
             if mod_nl_loss_match:
-                mod_base = mod_nl_loss_match.group(1)   # e.g. "y*", "b~", "y^"
+                mod_base = mod_nl_loss_match.group(1)  # e.g. "y*", "b~", "y^"
                 loss_count = mod_nl_loss_match.group(2)  # e.g. "" or "2"
-                loss_type = mod_nl_loss_match.group(3)   # e.g. "H2O"
-                formatted_mod_base = HTMLFormatter.format_ion_type_with_radicals(mod_base)
+                loss_type = mod_nl_loss_match.group(3)  # e.g. "H2O"
+                formatted_mod_base = HTMLFormatter.format_ion_type_with_radicals(
+                    mod_base
+                )
                 if loss_count and loss_count != "1":
                     formatted_loss = f"{loss_count}{fmt_loss(loss_type)}"
                 else:
                     formatted_loss = fmt_loss(loss_type)
-                annotation = f"[{formatted_mod_base}-{formatted_loss}]" + fmt_sub(ion_number)
+                annotation = f"[{formatted_mod_base}-{formatted_loss}]" + fmt_sub(
+                    ion_number
+                )
             else:
-                formatted_ion_type = HTMLFormatter.format_ion_type_with_radicals(ion_type)
+                formatted_ion_type = HTMLFormatter.format_ion_type_with_radicals(
+                    ion_type
+                )
                 annotation = formatted_ion_type + fmt_sub(ion_number)
             if charge != "1":
                 annotation += fmt_sup(f"+{charge}")
@@ -184,7 +328,7 @@ class HTMLFormatter:
 
         # STANDARD ION SERIES HANDLING
         # Check if ion_type contains multiple neutral losses (e.g., y-2H2O, b-3NH3)
-        multiple_loss_match = re.match(r'^([abcxyzwvd]+)-(\d*)([A-Z0-9]+)$', ion_type)
+        multiple_loss_match = re.match(r"^([abcxyzwvd]+)-(\d*)([A-Z0-9]+)$", ion_type)
 
         if multiple_loss_match:
             # Extract components: base ion, count, loss type
@@ -202,7 +346,9 @@ class HTMLFormatter:
             formatted_base_ion = HTMLFormatter.format_ion_type_with_radicals(base_ion)
 
             # Build annotation with proper loss formatting
-            annotation = f"[{formatted_base_ion}-{formatted_loss}]" + fmt_sub(ion_number)
+            annotation = f"[{formatted_base_ion}-{formatted_loss}]" + fmt_sub(
+                ion_number
+            )
 
         elif pd.isna(neutral_loss) or str(neutral_loss).strip() in ["", "None"]:
             # No neutral loss - standard formatting
@@ -213,10 +359,15 @@ class HTMLFormatter:
             # Single neutral loss - legacy formatting
             formatted_loss = fmt_loss(str(neutral_loss).strip())
             formatted_base_type = HTMLFormatter.format_ion_type_with_radicals(base_type)
-            annotation = f"[{formatted_base_type}-{formatted_loss}]" + fmt_sub(ion_number)
+            annotation = f"[{formatted_base_type}-{formatted_loss}]" + fmt_sub(
+                ion_number
+            )
 
         # Handle custom_ion_series for non-MH cases (legacy)
-        if not pd.isna(neutral_loss) and str(neutral_loss).strip() == "custom_ion_series":
+        if (
+            not pd.isna(neutral_loss)
+            and str(neutral_loss).strip() == "custom_ion_series"
+        ):
             formatted_ion_type = HTMLFormatter.format_ion_type_with_radicals(ion_type)
             annotation = formatted_ion_type + fmt_sub(ion_number)
 
@@ -241,7 +392,7 @@ class HTMLFormatter:
             row,
             fmt_sub=lambda x: f"<sub>{x}</sub>",
             fmt_sup=lambda x: f"<sup>{x}</sup>",
-            fmt_loss=HTMLFormatter.format_neutral_loss
+            fmt_loss=HTMLFormatter.format_neutral_loss,
         )
 
     @staticmethod
@@ -254,7 +405,58 @@ class HTMLFormatter:
             row,
             fmt_sub=HTMLFormatter.to_subscript,
             fmt_sup=HTMLFormatter.to_superscript,
-            fmt_loss=HTMLFormatter.format_neutral_loss_unicode
+            fmt_loss=HTMLFormatter.format_neutral_loss_unicode,
+        )
+
+    @staticmethod
+    def format_annotation_snfg(row):
+        """Build the annotation string with SNFG colored shapes for glycan Y-ions.
+
+        For non-glycan ions behaves identically to format_annotation (HTML tags).
+        For glycan Y-ions, monosaccharide letters are replaced with colored Unicode
+        shapes (e.g. ■ for HexNAc, ● for Hex) matching the SNFG standard.
+        """
+        return HTMLFormatter._format_annotation_with_formatter(
+            row,
+            fmt_sub=lambda x: f"<sub>{x}</sub>",
+            fmt_sup=lambda x: f"<sup>{x}</sup>",
+            fmt_loss=HTMLFormatter.format_neutral_loss,
+            use_snfg=True,
+        )
+
+    @staticmethod
+    def format_annotation_svg(row):
+        """Build the annotation string optimised for SVG export.
+
+        Uses Unicode subscript characters (U+2080–U+2089, all one Unicode block → no
+        inter-run gap) for subscripts, and HTML ``<sup>`` only for the charge state
+        superscript (keeps ``+`` and the digit as plain ASCII in one font run, fixing
+        the gap between ⁺ (U+207A) and ² (U+00B2) that appears when PyQtGraph's SVG
+        exporter serialises multi-run Unicode text).  Avoids HTML ``<sub>`` tags
+        entirely, which are the cause of squished / overlapping characters in exported
+        SVGs when mixed with ``<sup>`` runs.
+        """
+        return HTMLFormatter._format_annotation_with_formatter(
+            row,
+            fmt_sub=HTMLFormatter.to_subscript,
+            fmt_sup=lambda x: f"<sup>{x}</sup>",
+            fmt_loss=HTMLFormatter.format_neutral_loss_unicode,
+        )
+
+    @staticmethod
+    def format_annotation_svg_snfg(row):
+        """SVG-export variant of :meth:`format_annotation_snfg`.
+
+        Same hybrid approach as :meth:`format_annotation_svg` (Unicode subscripts +
+        HTML ``<sup>`` for charge only) but with SNFG colored shapes for glycan
+        Y-ions.
+        """
+        return HTMLFormatter._format_annotation_with_formatter(
+            row,
+            fmt_sub=HTMLFormatter.to_subscript,
+            fmt_sup=lambda x: f"<sup>{x}</sup>",
+            fmt_loss=HTMLFormatter.format_neutral_loss_unicode,
+            use_snfg=True,
         )
 
     @staticmethod
@@ -265,20 +467,20 @@ class HTMLFormatter:
         Now handles complex losses like H3PO4, SOCH4
         """
         common_losses = {
-            'NH3': 'NH<sub>3</sub>',
-            'H2O': 'H<sub>2</sub>O',
-            'CH3SOH': 'CH<sub>3</sub>SOH',
-            'H3PO4': 'H<sub>3</sub>PO<sub>4</sub>',
-            'SOCH4': 'SOCH<sub>4</sub>'
+            "NH3": "NH<sub>3</sub>",
+            "H2O": "H<sub>2</sub>O",
+            "CH3SOH": "CH<sub>3</sub>SOH",
+            "H3PO4": "H<sub>3</sub>PO<sub>4</sub>",
+            "SOCH4": "SOCH<sub>4</sub>",
         }
-        
+
         # If it's a known loss, return the formatted version
         if loss in common_losses:
             return common_losses[loss]
-        
+
         # For unknown losses, try to format numbers as subscripts
         # This handles cases like CO2 -> CO<sub>2</sub>
-        formatted_loss = re.sub(r'(\d+)', r'<sub>\1</sub>', loss)
+        formatted_loss = re.sub(r"(\d+)", r"<sub>\1</sub>", loss)
         return formatted_loss
 
     @staticmethod
@@ -297,20 +499,20 @@ class HTMLFormatter:
         - da -> formatted subscript, wb -> formatted subscript
         """
         # Handle z-type: base z should have radical
-        if ion_type == 'z':
-            return 'z•'
+        if ion_type == "z":
+            return "z•"
         # Handle z+1: should be just z (no radical)
-        elif ion_type == 'z+1':
+        elif ion_type == "z+1":
             return "z'"
         # Handle z+2, z+3, etc.: keep as is
-        elif ion_type.startswith('z+'):
+        elif ion_type.startswith("z+"):
             return ion_type
         # Handle c-1: should be just c (no modification indicator)
-        elif ion_type == 'c-1':
-            return 'c'
+        elif ion_type == "c-1":
+            return "c"
         # Handle satellite ion variants: da->d<sub>a</sub> or dₐ, wb->w<sub>b</sub> or w_b
-        elif ion_type in ('da', 'db', 'wa', 'wb'):
-            return f'{ion_type[0]}{fmt_sub(ion_type[1])}'
+        elif ion_type in ("da", "db", "wa", "wb"):
+            return f"{ion_type[0]}{fmt_sub(ion_type[1])}"
 
         # Return unchanged for other ion types
         return ion_type
@@ -326,8 +528,7 @@ class HTMLFormatter:
         - da -> d<sub>a</sub>, wb -> w<sub>b</sub>
         """
         return HTMLFormatter._format_ion_type_with_radicals(
-            ion_type,
-            fmt_sub=lambda x: f"<sub>{x}</sub>"
+            ion_type, fmt_sub=lambda x: f"<sub>{x}</sub>"
         )
 
     @staticmethod
@@ -342,8 +543,7 @@ class HTMLFormatter:
         - da -> dₐ, wb -> wᵦ (Unicode subscript a/b)
         """
         return HTMLFormatter._format_ion_type_with_radicals(
-            ion_type,
-            fmt_sub=HTMLFormatter.to_subscript
+            ion_type, fmt_sub=HTMLFormatter.to_subscript
         )
 
     @staticmethod
@@ -353,11 +553,11 @@ class HTMLFormatter:
         Examples: NH3 -> NH₃, H2O -> H₂O
         """
         common_losses = {
-            'NH3': f'NH{HTMLFormatter.to_subscript("3")}',
-            'H2O': f'H{HTMLFormatter.to_subscript("2")}O',
-            'CH3SOH': f'CH{HTMLFormatter.to_subscript("3")}SOH',
-            'H3PO4': f'H{HTMLFormatter.to_subscript("3")}PO{HTMLFormatter.to_subscript("4")}',
-            'SOCH4': f'SOCH{HTMLFormatter.to_subscript("4")}'
+            "NH3": f'NH{HTMLFormatter.to_subscript("3")}',
+            "H2O": f'H{HTMLFormatter.to_subscript("2")}O',
+            "CH3SOH": f'CH{HTMLFormatter.to_subscript("3")}SOH',
+            "H3PO4": f'H{HTMLFormatter.to_subscript("3")}PO{HTMLFormatter.to_subscript("4")}',
+            "SOCH4": f'SOCH{HTMLFormatter.to_subscript("4")}',
         }
 
         # If it's a known loss, return the formatted version
@@ -365,11 +565,10 @@ class HTMLFormatter:
             return common_losses[loss]
 
         # For unknown losses, convert numbers to subscripts
-        formatted_loss = ''
+        formatted_loss = ""
         for char in loss:
             if char.isdigit():
                 formatted_loss += HTMLFormatter.to_subscript(char)
             else:
                 formatted_loss += char
         return formatted_loss
-

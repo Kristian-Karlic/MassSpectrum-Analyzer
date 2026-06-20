@@ -21,7 +21,7 @@ class ModificationMassDatabase:
         "Trimethylation": 42.0470,
         "HexNAc": 203.0794,
         "Hex": 162.0528,
-        "dHex": 146.0579,
+        "Fuc": 146.0579,
         "NeuAc": 291.0954,
         "NeuGc": 307.0903,
         "Sulfo": 79.9568,

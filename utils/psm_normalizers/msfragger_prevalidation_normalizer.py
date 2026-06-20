@@ -57,7 +57,7 @@ class MSFraggerPreValidationNormalizer(PSMNormalizer):
         result["Prev AA"] = df["peptide_prev_aa"].fillna("")
         result["Next AA"] = df["peptide_next_aa"].fillna("")
         result["Protein Start"] = ""  # Not available in pre-validation format
-        result["Protein End"] = ""    # Not available in pre-validation format
+        result["Protein End"] = ""  # Not available in pre-validation format
         result["Spectrum file"] = spectrum_file  # Same value for all rows
         result["index"] = df["scannum"].astype(str)
 
@@ -80,7 +80,9 @@ class MSFraggerPreValidationNormalizer(PSMNormalizer):
         where proton_mass = 1.007276 Da
         """
         proton_mass = 1.007276
-        return (df["precursor_neutral_mass"] + df["charge"] * proton_mass) / df["charge"]
+        return (df["precursor_neutral_mass"] + df["charge"] * proton_mass) / df[
+            "charge"
+        ]
 
     @staticmethod
     def _parse_modifications(mod_str, peptide_length):

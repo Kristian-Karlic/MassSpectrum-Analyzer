@@ -1,6 +1,13 @@
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QMessageBox,
 )
 from PyQt6.QtCore import Qt
 from utils.style.style import EditorConstants, StyleSheet
@@ -36,8 +43,10 @@ class UnknownModificationsDialog(QDialog):
             "as having no mass offset."
         )
         info.setWordWrap(True)
-        info.setStyleSheet(f"color: {EditorConstants.TEXT_COLOR()}; "
-                           f"{EditorConstants.get_font_string()}")
+        info.setStyleSheet(
+            f"color: {EditorConstants.TEXT_COLOR()}; "
+            f"{EditorConstants.get_font_string()}"
+        )
         layout.addWidget(info)
 
         # Table -----------------------------------------------------------
@@ -99,8 +108,9 @@ class UnknownModificationsDialog(QDialog):
 
         if errors:
             QMessageBox.warning(
-                self, "Validation Error",
-                "Please fix the following:\n\n" + "\n".join(errors)
+                self,
+                "Validation Error",
+                "Please fix the following:\n\n" + "\n".join(errors),
             )
             return
 
