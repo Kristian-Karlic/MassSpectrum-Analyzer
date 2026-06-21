@@ -3,8 +3,9 @@ MassSpectrum-Analyzer is a tool for analysis of peptide spectral data. Load raw 
 and begin annotating entire datasets. The spectral annotation tool provides full control on what fragment ions you wish to annotate, with generation of neutral loss ions,
 remainder ions, labile ions (complete loss of modification), and user custom offsets. Spectra can be tracked and exported in bulk as you analyse your data to enable large-scale analysis. The tool allows
 for comparison of fragment ions between spectra, hydrogen migration analysis, rescoring of datasets, and protein coverage visualisation.
-<img width="1667" height="885" alt="image" src="https://github.com/user-attachments/assets/cbc66d2a-cb63-4204-adaf-334b7ae8603a" />
-Example of GUI with glycopeptide from A. baumannii D1279779 annotated with non-labile and labile species (~)
+<img width="1644" height="879" alt="image" src="https://github.com/user-attachments/assets/25f123f3-11ca-427f-ba81-160bebc94ff9" />
+
+Example of GUI with glycopeptide from A. baumannii BAL062 annotated with non-labile and labile species (~), and Y-glycan ions
 
 
 ## Getting started
@@ -39,12 +40,18 @@ The application can import and normalize PSM data from multiple search engines:
   - Satellite ions: d, w, v 
   - Internal fragments (a/b)
   - Precursor ions (MH)
-  - Standard losses: H₂O, NH₃, H₃PO₄, SOCH₄, CO
+  - Glycan Y-ions (SNFG shapes support with Unicode) (Glycan database, custom monosaccharides)
+
+ <img width="613" height="425" alt="image" src="https://github.com/user-attachments/assets/5ada7cfd-bc14-4434-bcea-c781dd3aa865" />
+
+   - Standard losses: H₂O, NH₃, H₃PO₄, SOCH₄, CO
     - Custom ion series with user-defined offsets and AA site restrictions
   - Modification database
     - Neutral losses (e.g. Phospho -97.977 Da - y* series)
     - Labile losses (e.g. O-glyco complete loss - y~ series)
     - Remainder ions (e.g. N-glyco 203 Da - y^ series)
+   <img width="763" height="408" alt="image" src="https://github.com/user-attachments/assets/d7b9b78f-a60b-4d99-93f6-2b42e04621de" />
+
   - Isotope peak generation (+1 to +4 Isotopes)
   - Diagnostic Ions (e.g. Oxonium ions)
 
@@ -52,19 +59,21 @@ The application can import and normalize PSM data from multiple search engines:
 * PSMs loaded in from search input can be accessed via the table below the spectra. Simply click a row within the table, and it the PSM will be annotated with the ions you've selected
 * The spectra is fully interactive, allowing movement of text label, tooltips as hover over peaks, alternative matches within ppm tolerance, hide/show certain ion groups, change colours etc.
 * The interactive peptide sequence allows movement of modifications to reannotate the peptide adaptively to figure out best annotation. Additionally when exporting this information will be tracked.
+* Ability to relocalise a modification across every position on a peptide to determine highest scoring position
 * Various scoring parameters can be used to determine quality of spectra
   * X!Tandem score (Craig, R., & Beavis, R. C. (2004). TANDEM: matching proteins with tandem mass spectra. Bioinformatics, 20(9), 1466-1467.)
-  * Morpheus score (Wenger, C. D., & Coon, J. J. (2013). A proteomics search algorithm specifically designed for high-resolution tandem mass spectra. Journal of proteome research, 12(3), 1377-1386.)
   * Complementary Ion series (N-/C- series detected at unique positions
   * Consecutive Pairs (y1,y2,y3,y4 etc.)
-  * Length-dependent normalised score (Rescoring tool - decoys required) (https://www.mcponline.org/article/S1535-9476(20)32646-3/fulltext)
   * Theoritical Fragments (Number of matched ions / total ions in search space)
   * Peaks annotated (Number of matched peaks / total number of peaks)
   * Annotated TIC (%) (Percentage of TIC that is matched)
   * Coverage (Number of fragmented bonds for peptide)
+  * Intact Coverage (no labile, remainder or neutral losses considered)  
+  * Partial Coverage (all ions expect labile ions)
   * Ion counts (split into different species for each main ion type (y/b/a etc.)
   * Ion Intensities (the percent intensities of each species for each main ion type (e.g. y/y-H2O/y* etc.)
-  <img width="736" height="805" alt="image" src="https://github.com/user-attachments/assets/ee97bf67-1b03-40a3-b1f7-8b395493c1fd" />
+<img width="371" height="487" alt="image" src="https://github.com/user-attachments/assets/54104c0e-fb3d-45f3-a0a4-5cedc44facdb" />
+
 
 * Specific scan numbers can also be used to extract m/z and intensity values (useful for cases such as PRM where it may not be identified within psm.tsv)
 * Distance between peaks can be measured by pressing "M" then selecting two peaks
