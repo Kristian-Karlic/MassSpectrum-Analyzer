@@ -43,7 +43,7 @@ def _extract_mzml_scans_common(file_path, scan_numbers, lightweight=False):
     found = {}
 
     try:
-        run = pymzml.run.Reader(file_path)
+        run = pymzml.run.Reader(file_path, build_index_from_scratch=True)
         requested_count = len(scan_set)
         for spec in run:
             if spec.ID in scan_set:
@@ -153,8 +153,8 @@ def _extract_raw_scans_common(file_path, scan_numbers, lightweight=False):
                         header_info = str(header) if header else None
                         found[scan_num] = {
                             "status": "success",
-                            "mz": scan.Masses,
-                            "intensity": scan.Intensities,
+                            "mz": list(scan.Masses),
+                            "intensity": list(scan.Intensities),
                             "header": header_info,
                         }
                     else:

@@ -9,24 +9,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pymzml
 
-from .core import RawFileManager
+from .core import RawFileManager, get_ms_order_type
 
 logger = logging.getLogger(__name__)
-
-# Thermo API imports for MSOrder detection
-try:
-    from ThermoFisher.CommonCore.Data.FilterEnums import MSOrderType
-
-    _HAS_THERMO = True
-except ImportError:
-    _HAS_THERMO = False
 
 
 def _count_raw_scans(file_path):
     """Count MS1/MS2 scans in a Thermo .raw file by reading scan event metadata."""
-    if not _HAS_THERMO:
+    try:
+        ms_order_type = get_ms_order_type()
+    except Exception as exc:
         logger.warning(
-            "Thermo RawFileReader not available; cannot count scans in .raw files"
+            "Thermo RawFileReader not available; cannot count scans in .raw files: %s",
+            exc,
         )
         return {"ms1": 0, "ms2": 0, "total": 0}
 
@@ -45,9 +40,9 @@ def _count_raw_scans(file_path):
             try:
                 scan_event = raw_file.GetScanEventForScanNumber(scan_num)
                 ms_order = scan_event.MSOrder
-                if ms_order == MSOrderType.Ms:
+                if ms_order == ms_order_type.Ms:
                     ms1_count += 1
-                elif ms_order == MSOrderType.Ms2:
+                elif ms_order == ms_order_type.Ms2:
                     ms2_count += 1
             except Exception:
                 continue
@@ -63,7 +58,7 @@ def _count_mzml_scans(file_path):
     total = 0
 
     try:
-        run = pymzml.run.Reader(file_path)
+        run = pymzml.run.Reader(file_path, build_index_from_scratch=True)
         for spec in run:
             total += 1
             ms_level = spec.ms_level

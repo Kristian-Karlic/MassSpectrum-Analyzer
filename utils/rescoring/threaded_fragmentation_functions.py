@@ -7,14 +7,15 @@ from tqdm import tqdm
 from concurrent.futures import as_completed, ProcessPoolExecutor
 from collections import defaultdict
 import numpy as np
+import os
 import sys
 
 # Ensure sys.stdout/stderr exist for tqdm
 # In windowed .exe mode, these can be None, causing tqdm to crash
 if sys.stdout is None:
-    sys.stdout = open("NUL", "w")  # Windows null device
+    sys.stdout = open(os.devnull, "w")
 if sys.stderr is None:
-    sys.stderr = open("NUL", "w")  # Windows null device
+    sys.stderr = open(os.devnull, "w")
 
 logger = logging.getLogger(__name__)
 

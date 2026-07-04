@@ -100,6 +100,22 @@ The application can import and normalize PSM data from multiple search engines:
 - Windows 10/11
 - .NET Framework 4.7.1 (for ThermoFisher raw file support)
 
+## Running from source on Linux/macOS
+The GUI can be run from source on Linux and macOS with Python and the packages
+in `requirements.txt`:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python GUI.py
+```
+
+For mzML-only workflows, no .NET runtime is needed. Thermo Fisher `.raw` files
+use pythonnet and Thermo RawFileReader. On Linux/macOS this requires either a
+working Mono runtime for the bundled `Net471` assemblies or a .NET/CoreCLR
+runtime for the bundled .NET Core assemblies.
+
 
 MassSpectrum-Analyzer utilises RawFileReader for accessing spectral information from .raw files.
 RawFileReader reading tool. Copyright © 2016 by Thermo Fisher Scientific, Inc. All rights reserved

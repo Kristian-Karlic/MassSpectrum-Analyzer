@@ -2,8 +2,10 @@
 from PyInstaller.utils.hooks import collect_all, collect_data_files
 
 datas = [('assets', 'assets'), ('data', 'data')]
-# Add ThermoFisher .NET DLLs for RawFileReader
+# Add ThermoFisher DLLs for RawFileReader.
+# Net471 is used by existing Windows builds; NetCore is required for Linux/macOS.
 datas += [('RawFileReader-main/RawFileReader-main/Libs/Net471', 'RawFileReader-main/RawFileReader-main/Libs/Net471')]
+datas += [('RawFileReader-main/RawFileReader-main/Libs/NetCore', 'RawFileReader-main/RawFileReader-main/Libs/NetCore')]
 binaries = []
 hiddenimports = ['PyQt6', 'PyQt6.QtCore', 'PyQt6.QtGui', 'PyQt6.QtWidgets', 'pandas', 'numpy', 'pyqtgraph', 'matplotlib', 'reportlab', 'tqdm', 'pymzml', 'clr', 'pythonnet', 'psm_utils', 'psm_utils.proforma', 'psm_utils.proforma.proforma', 'utils.mod_database', 'utils.mod_database.central_mod_database', 'utils.mod_database.modification_mass_database', 'utils.mod_database.mod_database_editor', 'utils.mod_database.unknown_mods_dialog']
 

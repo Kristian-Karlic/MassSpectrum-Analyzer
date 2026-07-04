@@ -49,7 +49,7 @@ class ExperimentDataManager:
             self.main_app,
             "Select Raw Data Files",
             "",
-            "Raw Files (*.raw *.mzML);;All Files (*.*)",
+            "Raw Files (*.raw *.RAW *.mzML *.mzml);;All Files (*.*)",
         )
 
         if files:
