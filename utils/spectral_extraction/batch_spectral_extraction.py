@@ -3,6 +3,7 @@ import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import os
+import sys
 from pathlib import Path
 from collections import defaultdict
 import pymzml
@@ -11,6 +12,16 @@ import logging
 from .core import RawFileManager, create_error_result, build_success_result
 
 logger = logging.getLogger(__name__)
+
+
+def _is_raw_file(file_path):
+    """Return True for Thermo RAW files."""
+    return Path(file_path).suffix.lower() == ".raw"
+
+
+def _process_raw_files_sequentially():
+    """Avoid pythonnet/Mono work in worker threads on Unix-like platforms."""
+    return sys.platform != "win32"
 
 
 def _resolve_worker_count(total_files, max_workers):
@@ -249,6 +260,41 @@ def ultra_fast_extract_lightweight(input_file, max_workers=None):
     worker_count = _resolve_worker_count(len(file_scan_map), max_workers)
     logger.debug(f"Using {worker_count} worker threads for extraction")
 
+    all_results = []
+
+    if _process_raw_files_sequentially():
+        raw_items = {
+            file_path: scan_numbers
+            for file_path, scan_numbers in file_scan_map.items()
+            if _is_raw_file(file_path)
+        }
+        for file_path, scan_numbers in raw_items.items():
+            try:
+                all_results.extend(
+                    extract_multiple_scans_from_file_lightweight(
+                        file_path, scan_numbers
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Extraction failed for {file_path}: {e}")
+                all_results.extend(
+                    create_error_result(
+                        scan_num,
+                        file_path,
+                        f"error - extraction worker failed: {str(e)}",
+                    )
+                    for scan_num in scan_numbers
+                )
+
+        file_scan_map = {
+            file_path: scan_numbers
+            for file_path, scan_numbers in file_scan_map.items()
+            if not _is_raw_file(file_path)
+        }
+
+    if not file_scan_map:
+        return pd.DataFrame(all_results)
+
     # Use ThreadPoolExecutor with file-level parallelization
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         future_to_file = {
@@ -257,8 +303,6 @@ def ultra_fast_extract_lightweight(input_file, max_workers=None):
             ): (file_path, scan_numbers)
             for file_path, scan_numbers in file_scan_map.items()
         }
-
-        all_results = []
 
         for i, future in enumerate(as_completed(future_to_file)):
             file_path, scan_numbers = future_to_file[future]

@@ -4,6 +4,7 @@ Supports Thermo .raw files (via RawFileReader) and .mzML files (via pymzml).
 """
 
 import logging
+import sys
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -12,6 +13,16 @@ import pymzml
 from .core import RawFileManager, get_ms_order_type
 
 logger = logging.getLogger(__name__)
+
+
+def _is_raw_file(file_path):
+    """Return True for Thermo RAW files."""
+    return Path(file_path).suffix.lower() == ".raw"
+
+
+def _process_raw_files_sequentially():
+    """Avoid pythonnet/Mono work in worker threads on Unix-like platforms."""
+    return sys.platform != "win32"
 
 
 def _count_raw_scans(file_path):
@@ -92,6 +103,19 @@ def count_scans_batch(file_paths, max_workers=4):
         dict mapping file_path -> {'ms1': N, 'ms2': M, 'total': T}
     """
     results = {}
+
+    if _process_raw_files_sequentially():
+        raw_paths = [fp for fp in file_paths if _is_raw_file(fp)]
+        for fp in raw_paths:
+            try:
+                results[fp] = count_scans(fp)
+            except Exception as e:
+                logger.error(f"Error counting scans for {fp}: {e}")
+                results[fp] = {"ms1": 0, "ms2": 0, "total": 0}
+
+        file_paths = [fp for fp in file_paths if not _is_raw_file(fp)]
+        if not file_paths:
+            return results
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_path = {executor.submit(count_scans, fp): fp for fp in file_paths}

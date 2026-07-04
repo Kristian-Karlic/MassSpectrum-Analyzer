@@ -192,24 +192,16 @@ def _resolve_mod_mass(mod_content: str) -> Optional[float]:
     except ValueError:
         pass
 
-    # 3. UNIMOD: prefix  (psm_utils uses this for named lookups)
+    # 3. UNIMOD: prefix
     if content.upper().startswith("UNIMOD:"):
         return _unimod_mass(content[7:])
 
-    # 4. Named modification – try psm_utils modification database
+    # 4. Named modification
     return _named_mod_mass(content)
 
 
 def _unimod_mass(unimod_id: str) -> Optional[float]:
     """Look up monoisotopic mass by UNIMOD accession number."""
-    try:
-        from psm_utils.proforma.proforma import Modification
-
-        mod = Modification(f"UNIMOD:{unimod_id}")
-        return float(mod.mass)
-    except Exception:
-        pass
-    # Fallback via pyteomics if available
     try:
         from pyteomics import mass as pyteomics_mass
 
@@ -277,25 +269,14 @@ def _named_mod_mass(name: str) -> Optional[float]:
         _NAMED_MOD_CACHE[key] = mass
         return mass
 
-    # 2. Try psm_utils Modification object
-    try:
-        from psm_utils.proforma.proforma import Modification
-
-        mod = Modification(name)
-        mass = float(mod.mass)
-        _NAMED_MOD_CACHE[key] = mass
-        return mass
-    except Exception:
-        pass
-
-    # 3. Try pyteomics Unimod by name
+    # 2. Try pyteomics Unimod by name
     try:
         from pyteomics import mass as pyteomics_mass
 
         db = pyteomics_mass.Unimod()
         hit = db.by_title(name)
         if hit:
-            mass = float(hit[0]["mono_mass"])
+            mass = float(hit["mono_mass"])
             _NAMED_MOD_CACHE[key] = mass
             return mass
     except Exception:
