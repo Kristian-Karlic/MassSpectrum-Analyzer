@@ -4,29 +4,35 @@ Supports Thermo .raw files (via RawFileReader) and .mzML files (via pymzml).
 """
 
 import logging
+import sys
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pymzml
 
-from .core import RawFileManager
+from .core import RawFileManager, get_ms_order_type
 
 logger = logging.getLogger(__name__)
 
-# Thermo API imports for MSOrder detection
-try:
-    from ThermoFisher.CommonCore.Data.FilterEnums import MSOrderType
 
-    _HAS_THERMO = True
-except ImportError:
-    _HAS_THERMO = False
+def _is_raw_file(file_path):
+    """Return True for Thermo RAW files."""
+    return Path(file_path).suffix.lower() == ".raw"
+
+
+def _process_raw_files_sequentially():
+    """Avoid pythonnet/Mono work in worker threads on Unix-like platforms."""
+    return sys.platform != "win32"
 
 
 def _count_raw_scans(file_path):
     """Count MS1/MS2 scans in a Thermo .raw file by reading scan event metadata."""
-    if not _HAS_THERMO:
+    try:
+        ms_order_type = get_ms_order_type()
+    except Exception as exc:
         logger.warning(
-            "Thermo RawFileReader not available; cannot count scans in .raw files"
+            "Thermo RawFileReader not available; cannot count scans in .raw files: %s",
+            exc,
         )
         return {"ms1": 0, "ms2": 0, "total": 0}
 
@@ -45,9 +51,9 @@ def _count_raw_scans(file_path):
             try:
                 scan_event = raw_file.GetScanEventForScanNumber(scan_num)
                 ms_order = scan_event.MSOrder
-                if ms_order == MSOrderType.Ms:
+                if ms_order == ms_order_type.Ms:
                     ms1_count += 1
-                elif ms_order == MSOrderType.Ms2:
+                elif ms_order == ms_order_type.Ms2:
                     ms2_count += 1
             except Exception:
                 continue
@@ -63,7 +69,7 @@ def _count_mzml_scans(file_path):
     total = 0
 
     try:
-        run = pymzml.run.Reader(file_path)
+        run = pymzml.run.Reader(file_path, build_index_from_scratch=True)
         for spec in run:
             total += 1
             ms_level = spec.ms_level
@@ -97,6 +103,19 @@ def count_scans_batch(file_paths, max_workers=4):
         dict mapping file_path -> {'ms1': N, 'ms2': M, 'total': T}
     """
     results = {}
+
+    if _process_raw_files_sequentially():
+        raw_paths = [fp for fp in file_paths if _is_raw_file(fp)]
+        for fp in raw_paths:
+            try:
+                results[fp] = count_scans(fp)
+            except Exception as e:
+                logger.error(f"Error counting scans for {fp}: {e}")
+                results[fp] = {"ms1": 0, "ms2": 0, "total": 0}
+
+        file_paths = [fp for fp in file_paths if not _is_raw_file(fp)]
+        if not file_paths:
+            return results
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_path = {executor.submit(count_scans, fp): fp for fp in file_paths}

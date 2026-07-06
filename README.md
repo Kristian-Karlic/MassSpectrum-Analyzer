@@ -9,8 +9,17 @@ Example of GUI with glycopeptide from A. baumannii BAL062 annotated with non-lab
 
 
 ## Getting started
-Download the latest release from https://github.com/Kristian-Karlic/MassSpectrum-Analyzer/releases/tag/v1.0.0
-Unzip compressed software, and simply run by launching the .exe to get started annotating.
+For Windows, download the latest release from https://github.com/Kristian-Karlic/MassSpectrum-Analyzer/releases/tag/v1.0.0
+Unzip compressed software, and simply run by launching the `.exe` to get started annotating.
+
+For Linux/macOS, run the GUI from source:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python GUI.py
+```
 
 ### 📊 Data Input & Compatibility
 
@@ -99,6 +108,11 @@ The application can import and normalize PSM data from multiple search engines:
 ## Requirements for .exe
 - Windows 10/11
 - .NET Framework 4.7.1 (for ThermoFisher raw file support)
+
+For mzML-only workflows, no .NET runtime is needed. Thermo Fisher `.raw` files
+use pythonnet and Thermo RawFileReader. On Linux/macOS this requires either a
+working Mono runtime for the bundled `Net471` assemblies or a .NET/CoreCLR
+runtime for the bundled .NET Core assemblies.
 
 
 MassSpectrum-Analyzer utilises RawFileReader for accessing spectral information from .raw files.
