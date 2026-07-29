@@ -115,5 +115,10 @@ working Mono runtime for the bundled `Net471` assemblies or a .NET/CoreCLR
 runtime for the bundled .NET Core assemblies.
 
 
+Key references
+
+Preprint: https://doi.org/10.64898/2026.06.22.733873 
+
+
 MassSpectrum-Analyzer utilises RawFileReader for accessing spectral information from .raw files.
 RawFileReader reading tool. Copyright © 2016 by Thermo Fisher Scientific, Inc. All rights reserved
