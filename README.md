@@ -10,7 +10,7 @@ Example of GUI with glycopeptide from A. baumannii BAL062 annotated with non-lab
 
 ## Getting started
 For Windows, download the latest release from https://github.com/Kristian-Karlic/MassSpectrum-Analyzer/releases/tag/v1.0.0
-Unzip compressed software, and simply run by launching the `.exe` to get started annotating.
+Unzip compressed software (use winrar/7zip, current issue with windows default extraction that will be fixed in next patch), and simply run by launching the `.exe` to get started annotating.
 
 For Linux/macOS, run the GUI from source:
 
