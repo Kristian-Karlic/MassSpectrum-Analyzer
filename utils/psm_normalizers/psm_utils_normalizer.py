@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 import re
 from typing import Dict, List, Tuple, Optional, Set
 
@@ -48,7 +49,8 @@ _BRACKET_RE = re.compile(r"\[([^\[\]]*)\]")
 
 # Default terminal group masses (monoisotopic)
 _DEFAULT_NTERM_MASS = 1.00782503207  # H
-_DEFAULT_CTERM_MASS = 18.01056468407  # OH2
+_DEFAULT_CTERM_MASS = 17.00273964408  # OH
+_WATER_MASS = _DEFAULT_NTERM_MASS + _DEFAULT_CTERM_MASS
 
 
 logger = logging.getLogger(__name__)
@@ -66,10 +68,12 @@ def _parse_proforma_string(
         ProForma 2.0 string, e.g. ``"PEP[+79.966]TIDE/2"`` or
         ``"[+42.011]-PEPTIDE-[+102.115]/3"``.
     correct_terminal_masses : bool
-        If *True*, terminal modification masses are assumed to be **total
-        terminal-group masses** (as found in pepXML) rather than deltas.
-        The default terminal-group mass (H for N-term, OH for C-term) is
-        subtracted to yield the true modification delta.
+        If *True*, terminal modification masses are **total terminal-group
+        masses** (terminal group + delta) rather than deltas, and the terminal
+        group (H for N-term, OH for C-term) is subtracted to recover the delta.
+        Only some pepXML writers use that convention, so callers should decide
+        per file via :func:`_pepxml_terminal_masses_are_totals` rather than
+        assuming it for all pepXML.
 
     Returns
     -------
@@ -319,6 +323,25 @@ _NATIVEID_SCAN_RE = re.compile(r"scan[=:](\d+)", re.IGNORECASE)
 _PEPXML_SPEC_RE = re.compile(r"^(.+?)\.(\d+)\.(\d+)\.(\d+)$")
 
 
+#: Extensions stripped when turning a path or run reference into a run name.
+_RUN_EXTENSIONS = (".raw", ".mzml", ".mzxml", ".d", ".mgf", ".pepxml")
+
+
+def _file_stem(path: str) -> str:
+    """Return a bare run name from a path, which may use either separator.
+
+    pepXML ``base_name`` attributes carry the path from the machine the search
+    ran on, so a file searched on Linux yields POSIX separators even when this
+    code runs on Windows.
+    """
+    name = re.split(r"[\\/]", str(path).strip())[-1]
+    lowered = name.lower()
+    for ext in _RUN_EXTENSIONS:
+        if lowered.endswith(ext):
+            return name[: -len(ext)]
+    return name
+
+
 def _parse_spectrum_id(spec_id: str) -> Tuple[str, str]:
     """Parse a spectrum identifier into (scan_number, run_name).
 
@@ -547,6 +570,125 @@ def _extract_pepxml_extra(
     return result
 
 
+def _pepxml_terminal_masses_are_totals(
+    file_path: str, sample_size: int = 200, max_hits_scanned: int = 50_000
+) -> bool:
+    """Decide how a pepXML file encodes ``mod_nterm_mass``/``mod_cterm_mass``.
+
+    The pepXML schema describes these as the mass of the *modified terminus*,
+    i.e. the terminal group (H / OH) plus the modification delta, and TPP tools
+    write them that way.  Other exporters (Proteome Discoverer, for one) write
+    the plain delta instead, so the value cannot be interpreted blindly --
+    subtracting the terminal group from a delta is what turned a +28.0313
+    N-terminal dimethyl into 27.0235.
+
+    Each interpretation is checked against the engine's own
+    ``calc_neutral_pep_mass``, which is exact, so the answer is derived from
+    the file rather than guessed from the search engine name.
+
+    Returns *True* only when the "total" reading reconciles and the "delta"
+    reading does not; anything ambiguous or unparseable falls back to *False*
+    (treat the value verbatim, as written).
+    """
+    import xml.etree.ElementTree as ET
+
+    from pyteomics import mass as pyteomics_mass
+
+    aa_mass = pyteomics_mass.std_aa_mass
+
+    votes_total = 0
+    votes_delta = 0
+    hits_scanned = 0
+    try:
+        for _event, elem in ET.iterparse(file_path, events=["end"]):
+            tag = elem.tag.rsplit("}", 1)[-1]
+            if tag != "search_hit":
+                continue
+
+            # A file with no terminal mods at all would otherwise be read end
+            # to end just to learn the answer does not matter.
+            hits_scanned += 1
+            if hits_scanned > max_hits_scanned:
+                elem.clear()
+                break
+
+            peptide = elem.attrib.get("peptide", "")
+            calc_mass_str = elem.attrib.get("calc_neutral_pep_mass", "")
+            if not peptide or not calc_mass_str:
+                elem.clear()
+                continue
+
+            mod_info = None
+            for child in elem:
+                if child.tag.rsplit("}", 1)[-1] == "modification_info":
+                    mod_info = child
+                    break
+            if mod_info is None:
+                elem.clear()
+                continue
+
+            nterm = mod_info.attrib.get("mod_nterm_mass")
+            cterm = mod_info.attrib.get("mod_cterm_mass")
+            if nterm is None and cterm is None:
+                elem.clear()
+                continue
+
+            try:
+                calc_mass = float(calc_mass_str)
+                # Residue masses, with modified positions replaced by the
+                # total (residue + mod) mass pepXML records for them.
+                residue_masses = [aa_mass[aa] for aa in peptide]
+                for mam in mod_info:
+                    if mam.tag.rsplit("}", 1)[-1] != "mod_aminoacid_mass":
+                        continue
+                    pos = int(mam.attrib["position"])
+                    if 1 <= pos <= len(residue_masses):
+                        residue_masses[pos - 1] = float(mam.attrib["mass"])
+
+                as_written = sum(residue_masses) + _WATER_MASS
+                group_mass = 0.0
+                if nterm is not None:
+                    as_written += float(nterm)
+                    group_mass += _DEFAULT_NTERM_MASS
+                if cterm is not None:
+                    as_written += float(cterm)
+                    group_mass += _DEFAULT_CTERM_MASS
+            except (KeyError, ValueError):
+                elem.clear()
+                continue
+
+            # "delta" reading matches as-written; "total" overshoots by the
+            # terminal group mass that would need subtracting.
+            if abs(calc_mass - as_written) < 0.01:
+                votes_delta += 1
+            elif abs(calc_mass - (as_written - group_mass)) < 0.01:
+                votes_total += 1
+
+            elem.clear()
+            if votes_delta + votes_total >= sample_size:
+                break
+    except Exception as exc:
+        logger.warning(
+            f"pepXML terminal-mass convention detection failed for {file_path}: "
+            f"{exc}; treating terminal masses as deltas"
+        )
+        return False
+
+    if votes_total and not votes_delta:
+        logger.debug(
+            f"pepXML terminal masses in {file_path} are total terminus masses "
+            f"({votes_total} hits agree); terminal group will be subtracted"
+        )
+        return True
+
+    if votes_total and votes_delta:
+        logger.warning(
+            f"pepXML terminal-mass convention is ambiguous in {file_path} "
+            f"({votes_delta} delta vs {votes_total} total); treating as deltas"
+        )
+    return False
+
+
 def _build_modified_peptide(bare_seq: str, parsed_mods: List[Tuple[float, int]]) -> str:
     """Build a ProForma-style display string from sequence + modifications.
 
@@ -638,6 +780,8 @@ class PSMUtilsNormalizer(PSMNormalizer):
         self.ptm_localization_prefs: Dict[float, Optional[str]] = {}
         self._ptm_result_cache: Optional[Dict[Tuple[str, str], Dict]] = None
         self._psms_cache: Optional[list] = None
+        self._run_fallback: Optional[str] = None
+        self._terminal_masses_are_totals: Optional[bool] = None
 
     # ------------------------------------------------------------------
     # PSMNormalizer interface
@@ -699,6 +843,73 @@ class PSMUtilsNormalizer(PSMNormalizer):
         except Exception:
             pass
         return run_names
+
+    def _get_run_fallback(self) -> str:
+        """Run name to use when neither the reader nor the spectrum ID supplies one.
+
+        psm_utils' ``PepXMLReader`` hardcodes ``run=None`` and prefers the
+        ``spectrumNativeID`` attribute over ``spectrum`` for the spectrum ID.
+        MSFragger writes both, so for its files the run name is absent from
+        every PSM object and has to be recovered from the file itself:
+        the ``spectrum`` attribute first, then ``msms_run_summary/@base_name``,
+        then the pepXML's own stem.
+        """
+        if self._run_fallback is not None:
+            return self._run_fallback
+
+        self._run_fallback = ""
+        try:
+            run_names = self._fast_pepxml_run_names()
+            if len(run_names) == 1:
+                self._run_fallback = next(iter(run_names))
+            elif not run_names:
+                self._run_fallback = self._pepxml_base_name() or _file_stem(
+                    self.source_file_path
+                )
+        except Exception as exc:
+            logger.debug(f"Could not determine fallback run name: {exc}")
+
+        if self._run_fallback:
+            logger.debug(
+                f"{os.path.basename(self.source_file_path)}: reader supplied no run "
+                f"name; using '{self._run_fallback}'"
+            )
+        return self._run_fallback
+
+    def _correct_terminal_masses(self) -> bool:
+        """Whether terminal mod masses in this file need the terminal group removed.
+
+        Only pepXML is affected, and the convention is detected once per file.
+        """
+        if self.format_key != "pepXML":
+            return False
+        if self._terminal_masses_are_totals is None:
+            self._terminal_masses_are_totals = _pepxml_terminal_masses_are_totals(
+                self.source_file_path
+            )
+        return self._terminal_masses_are_totals
+
+    def _pepxml_base_name(self) -> str:
+        """Return the stem of ``msms_run_summary/@base_name``, if unambiguous."""
+        import xml.etree.ElementTree as ET
+
+        base_names: set[str] = set()
+        try:
+            for _event, elem in ET.iterparse(self.source_file_path, events=["start"]):
+                tag = elem.tag
+                if "}" in tag:
+                    tag = tag.rsplit("}", 1)[1]
+                if tag == "msms_run_summary":
+                    base_name = elem.attrib.get("base_name", "")
+                    if base_name:
+                        base_names.add(_file_stem(base_name))
+                elif tag == "spectrum_query":
+                    # base_name only appears before the first query
+                    break
+        except Exception as exc:
+            logger.debug(f"Could not read pepXML base_name: {exc}")
+
+        return next(iter(base_names)) if len(base_names) == 1 else ""
 
     # ------------------------------------------------------------------
     # Extra pepXML field support (prev/next AA, masses, missed cleavages)
@@ -886,7 +1097,7 @@ class PSMUtilsNormalizer(PSMNormalizer):
         pf_str = str(psm.peptidoform) if psm.peptidoform is not None else ""
         bare_seq, parsed_mods, charge = _parse_proforma_string(
             pf_str,
-            correct_terminal_masses=(self.format_key == "pepXML"),
+            correct_terminal_masses=self._correct_terminal_masses(),
         )
 
         # Encode parsed_mods as list-of-tuples (consistent with other normalizers)
@@ -896,12 +1107,13 @@ class PSMUtilsNormalizer(PSMNormalizer):
         seq_section = pf_str.rsplit("/", 1)[0]
         assigned_mods_str = seq_section if parsed_mods else ""
 
-        # Run / spectrum file (stem without extension)
+        # Run / spectrum file (stem without extension). The reader may hand back
+        # a full path from the search machine, so reduce it to a bare run name.
         run = (psm.run or "").strip()
         if run in ("", "nan", "None", "none"):
             run = ""
-        if run.lower().endswith((".raw", ".mzml", ".d")):
-            run = run.rsplit(".", 1)[0]
+        else:
+            run = _file_stem(run)
 
         # Spectrum ID — parse scan number (and optionally run name) from
         # various identifier formats used by different search engines
@@ -912,6 +1124,12 @@ class PSMUtilsNormalizer(PSMNormalizer):
         # the spectrum_id (common for pepXML where spectrum="file.scan.scan.charge")
         if not run and parsed_run:
             run = parsed_run
+
+        # Neither source had one — fall back to the run name of the file itself.
+        # Without this "Spectrum file" stays empty and the later merge against
+        # the raw-file table matches nothing, leaving no rows to extract.
+        if not run and self.format_key == "pepXML":
+            run = self._get_run_fallback()
 
         # Protein list
         proteins = psm.protein_list or []

@@ -21,6 +21,7 @@ from PyQt6.QtCore import Qt
 from utils.utilities import UIHelpers
 from utils.style.style import StyleSheet, EditorConstants
 from utils.rescoring.interactive_plot_widget import InteractivePlotWidget
+from utils.rescoring.localisation_summary_widget import LocalisationSummaryWidget
 from utils.rescoring.export_options_dialog import (
     ExportOptionsDialog,
     build_fragment_long_format,
@@ -96,6 +97,9 @@ class RescoreResultsViewerWidget(QWidget):
         self.fdr_tab = QWidget()
         self.tab_widget.addTab(self.fdr_tab, "FDR Analysis")
 
+        self.localisation_tab = LocalisationSummaryWidget(self)
+        self.tab_widget.addTab(self.localisation_tab, "Site Localisation")
+
     def load_results_dataframe(self, df):
         """Load results from a dataframe (called by RescoringTabManager)"""
         try:
@@ -135,6 +139,7 @@ class RescoreResultsViewerWidget(QWidget):
             self.populate_score_comparison()
             self.populate_interactive_plots()
             self.populate_fdr_analysis()
+            self.localisation_tab.load_data(self.results_df)
 
         except Exception as e:
             import traceback
@@ -643,3 +648,6 @@ class RescoreResultsViewerWidget(QWidget):
         # Update FDR analysis figure if it exists
         if hasattr(self, "fdr_figure"):
             self._update_fdr_plots()
+
+        # Update site localisation plot
+        self.localisation_tab.update_plot()

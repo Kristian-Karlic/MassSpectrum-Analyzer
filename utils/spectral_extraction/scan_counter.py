@@ -10,7 +10,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pymzml
 
-from .core import RawFileManager, get_ms_order_type
+from .core import RawFileManager, configure_pymzml, get_ms_order_type
+
+configure_pymzml()
 
 logger = logging.getLogger(__name__)
 

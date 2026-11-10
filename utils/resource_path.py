@@ -5,7 +5,6 @@ Handles file path resolution for both development and bundled executable modes.
 
 import sys
 import os
-import shutil
 import logging
 
 logger = logging.getLogger(__name__)
@@ -44,10 +43,7 @@ def resource_path(relative_path: str) -> str:
 
 def get_user_data_dir() -> str:
     """
-    Get user-specific writable data directory.
-
-    This is where user-editable CSV files and settings should be stored
-    when running as a bundled executable.
+    Get user-specific writable directory (used for log files in bundled mode).
 
     Returns:
         Path to user data directory (creates if doesn't exist)
@@ -80,110 +76,28 @@ def is_bundled() -> bool:
     return getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
 
 
-def initialize_user_data_files(data_files: list = None) -> str:
+def get_data_file_path(filename: str) -> str:
     """
-    Initialize user data directory with bundled CSV files on first run.
+    Get the path for a data file (CSV, JSON, etc.) for both reading and writing.
 
-    Copies CSV files from the bundled resources to a user-writable location.
-    Only copies files that don't already exist (preserves user edits).
-
-    Args:
-        data_files: List of filenames to copy (defaults to common CSV files)
-
-    Returns:
-        Path to user data directory
-
-    Example:
-        >>> data_dir = initialize_user_data_files()
-        >>> # CSV files are now in user directory
-    """
-    if data_files is None:
-        data_files = [
-            "modifications_list.csv",
-            "diagnostic_ions.csv",
-            "custom_ion_series.csv",
-            "glycan_compositions.csv",
-            "custom_monosaccharides.csv",
-            "maxquant_mods.json",
-            "metamorpheus_mods.json",
-            "central_modifications.json",
-            "custom_presets.json",
-            # Include backups
-            "modifications_list.csv.backup",
-            "diagnostic_ions.csv.backup",
-            "custom_ion_series.csv.backup",
-        ]
-
-    user_dir = get_user_data_dir()
-    data_dir = os.path.join(user_dir, "data")
-
-    # Create data directory if it doesn't exist
-    os.makedirs(data_dir, exist_ok=True)
-
-    # Copy each data file from bundled resources to user directory
-    for filename in data_files:
-        user_file = os.path.join(data_dir, filename)
-
-        # Only copy if file doesn't exist (preserve user edits)
-        if not os.path.exists(user_file):
-            bundled_file = get_resource_path(f"data/{filename}")
-
-            if os.path.exists(bundled_file):
-                try:
-                    shutil.copy2(bundled_file, user_file)
-                    logger.info(f"[INIT] Copied {filename} to user data directory")
-                except Exception as e:
-                    logger.warning(f"Failed to copy {filename}: {e}")
-            else:
-                logger.warning(f"Bundled file not found: {bundled_file}")
-
-    return data_dir
-
-
-def get_data_file_path(filename: str, prefer_user_dir: bool = True) -> str:
-    """
-    Get the appropriate path for a data file (CSV, etc.).
-
-    In development mode: Returns "data/{filename}"
-    In bundled mode with prefer_user_dir=True: Returns user data directory path
-    In bundled mode with prefer_user_dir=False: Returns bundled resource path
+    Always resolves to the application's own data folder:
+        - Development mode: "data/{filename}"
+        - Bundled mode: the data folder shipped with the build
+          (dist/MassSpectrumAnalyzer/_internal/data), so each build uses the
+          lists that were in data/ when it was compiled.
 
     Args:
         filename: Name of the file (e.g., "modifications_list.csv")
-        prefer_user_dir: If True, prefer user directory in bundled mode
 
     Returns:
-        Absolute path to the data file
+        Path to the data file
 
     Example:
-        >>> # For reading (try user dir first, fall back to bundled)
         >>> csv_path = get_data_file_path("modifications_list.csv")
-        >>>
-        >>> # For writing (always use user dir when bundled)
-        >>> save_path = get_data_file_path("modifications_list.csv", prefer_user_dir=True)
     """
     if is_bundled():
-        if prefer_user_dir:
-            user_data_dir = get_user_data_dir()
-            user_file_path = os.path.join(user_data_dir, "data", filename)
-
-            # If file exists in user directory, use it
-            if os.path.exists(user_file_path):
-                return user_file_path
-
-            # Otherwise, check bundled resources
-            bundled_path = get_resource_path(f"data/{filename}")
-            if os.path.exists(bundled_path):
-                return bundled_path
-
-            # If neither exists, return user path for creation
-            return user_file_path
-        else:
-            # Use bundled resource
-            return get_resource_path(f"data/{filename}")
-    else:
-        # Development mode - use local data directory
-        return os.path.join("data", filename)
+        return get_resource_path(f"data/{filename}")
+    return os.path.join("data", filename)
 
 
 def get_asset_path(filename: str) -> str:
@@ -206,37 +120,6 @@ def get_asset_path(filename: str) -> str:
         return os.path.join("assets", filename)
 
 
-def ensure_user_data_structure() -> dict:
-    """
-    Ensure complete user data directory structure exists.
-
-    Creates necessary folders for user data storage.
-
-    Returns:
-        Dictionary with paths to key directories
-
-    Example:
-        >>> paths = ensure_user_data_structure()
-        >>> print(paths['data'])  # Path to data directory
-        >>> print(paths['exports'])  # Path for user exports
-    """
-    user_dir = get_user_data_dir()
-
-    directories = {
-        "root": user_dir,
-        "data": os.path.join(user_dir, "data"),
-        "exports": os.path.join(user_dir, "exports"),
-        "cache": os.path.join(user_dir, "cache"),
-        "logs": os.path.join(user_dir, "logs"),
-    }
-
-    # Create all directories
-    for dir_name, dir_path in directories.items():
-        os.makedirs(dir_path, exist_ok=True)
-
-    return directories
-
-
 if __name__ == "__main__":
     # Test the functions
     logger.debug("Testing resource path helper...")
@@ -247,10 +130,3 @@ if __name__ == "__main__":
     )
     logger.debug(f"Data file path test: {get_data_file_path('modifications_list.csv')}")
     logger.debug(f"Asset path test: {get_asset_path('up_arrow.png')}")
-
-    # Test directory structure creation
-    paths = ensure_user_data_structure()
-    logger.debug("\nUser data structure:")
-    for name, path in paths.items():
-        exists = "✓" if os.path.exists(path) else "✗"
-        logger.debug(f"  {exists} {name}: {path}")

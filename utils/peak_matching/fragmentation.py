@@ -43,6 +43,7 @@ __all__ = [
     "glycan_composition_mass",
     "generate_glycan_sub_compositions",
     "glycan_composition_label",
+    "find_matching_glycan",
 ]
 
 
@@ -344,6 +345,33 @@ def glycan_composition_label(composition, short=True, extra_shorts=None):
         if name not in preferred and n > 0:
             parts.append(f"{shorts.get(name, name[:2])}{n}" if short else f"{name}{n}")
     return "".join(parts) if parts else "Y0"
+
+
+def find_matching_glycan(mod_masses, glycan_compositions, mass_lookup, tolerance_da=0.02):
+    """Find the glycan whose residue mass best matches one of the modification masses.
+
+    glycan_compositions: iterable of (name, composition_str) pairs.
+    mass_lookup: {monosaccharide name: residue mass}; compositions containing
+    unknown names are skipped.
+    Returns (delta, name, composition_str, mod_mass, glycan_mass) for the
+    closest match within tolerance_da, or None.
+    """
+    if not mod_masses or not glycan_compositions:
+        return None
+    best_match = None
+    for name, composition in glycan_compositions:
+        tokens = re.findall(r"([A-Za-z]+)\((\d+)\)", composition or "")
+        if not tokens or any(mono not in mass_lookup for mono, _ in tokens):
+            continue
+        glycan_mass = sum(mass_lookup[mono] * int(n) for mono, n in tokens)
+        for mod_mass in mod_masses:
+            delta = abs(mod_mass - glycan_mass)
+            if delta > tolerance_da:
+                continue
+            candidate = (delta, name, composition, mod_mass, glycan_mass)
+            if best_match is None or candidate < best_match:
+                best_match = candidate
+    return best_match
 
 
 def calculate_fragment_ions(

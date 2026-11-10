@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
     QSpinBox,
+    QDoubleSpinBox,
     QLabel,
     QGroupBox,
     QCheckBox,
@@ -26,6 +27,10 @@ from utils.style.style import StyleSheet, EditorConstants
 from utils.utilities import UIHelpers, IonCollectionUtils
 from utils.rescoring.rescoring_worker import RescoringWorker
 from utils.rescoring.results_viewer_widget import RescoreResultsViewerWidget
+from utils.rescoring.localisation_config_dialog import (
+    LocalisationConfigDialog,
+    collect_modification_masses,
+)
 from utils.tables.excel_table import ExcelLikeTableWidget
 
 logger = logging.getLogger(__name__)
@@ -40,6 +45,7 @@ class RescoringTabManager:
         self.results_viewer = None
         self.worker_thread = None
         self.current_results_df = None
+        self.localisation_rules = {}  # {rounded_mass: allowed_aa_string}, per session
 
     def setup_rescoring_tab(self):
         """Setup the rescoring tab with controls and results viewer - FIXED layout"""
@@ -120,6 +126,8 @@ class RescoringTabManager:
         scroll_layout.addWidget(self._create_processing_params_group())
         scroll_layout.addWidget(self._create_decoy_detection_group())
         scroll_layout.addWidget(self._create_migration_tracking_group())
+        scroll_layout.addWidget(self._create_glycan_y_group())
+        scroll_layout.addWidget(self._create_localisation_group())
 
         scroll_layout.addStretch()
         scroll.setWidget(scroll_widget)
@@ -629,6 +637,181 @@ class RescoringTabManager:
         migration_group.setLayout(migration_layout)
         return migration_group
 
+    def _create_glycan_y_group(self):
+        """Create glycan Y-ion group"""
+        glycan_group = QGroupBox("Glycan Y-ions (Optional)")
+        glycan_group.setStyleSheet(EditorConstants.get_groupbox_style())
+        glycan_layout = QVBoxLayout()
+
+        info = QLabel(
+            "For each PSM, modification masses are compared against the glycan database. "
+            "When one matches, glycan Y-ions (peptide + partial glycan) are calculated and "
+            "matched. Y-ions are reported as GlycanY count columns and are not included "
+            "in the Rescore."
+        )
+        info.setStyleSheet(f"color: {EditorConstants.GRAY_500()}; font-style: italic;")
+        info.setWordWrap(True)
+        glycan_layout.addWidget(info)
+
+        self.enable_glycan_y = QCheckBox("Calculate glycan Y-ions for glycopeptides")
+        self.enable_glycan_y.setStyleSheet(EditorConstants.get_checkbox_style())
+        glycan_layout.addWidget(self.enable_glycan_y)
+
+        settings_container = QWidget()
+        settings_layout = QHBoxLayout(settings_container)
+        settings_layout.setContentsMargins(20, 5, 0, 0)
+
+        charge_label = QLabel("Max Y-ion charge:")
+        charge_label.setStyleSheet(StyleSheet.get_label_style())
+        settings_layout.addWidget(charge_label)
+
+        self.glycan_y_max_charge = QSpinBox()
+        self.glycan_y_max_charge.setStyleSheet(EditorConstants.get_spinbox_style())
+        self.glycan_y_max_charge.setRange(1, 10)
+        annotation_spin = getattr(self.parent, "glycan_max_charge_spin", None)
+        self.glycan_y_max_charge.setValue(
+            annotation_spin.value() if annotation_spin is not None else 4
+        )
+        settings_layout.addWidget(self.glycan_y_max_charge)
+
+        tol_label = QLabel("Glycan mass tolerance (Da):")
+        tol_label.setStyleSheet(StyleSheet.get_label_style())
+        settings_layout.addWidget(tol_label)
+
+        self.glycan_mass_tolerance = QDoubleSpinBox()
+        self.glycan_mass_tolerance.setStyleSheet(EditorConstants.get_spinbox_style())
+        self.glycan_mass_tolerance.setDecimals(3)
+        self.glycan_mass_tolerance.setRange(0.001, 1.0)
+        self.glycan_mass_tolerance.setSingleStep(0.005)
+        self.glycan_mass_tolerance.setValue(0.02)
+        self.glycan_mass_tolerance.setToolTip(
+            "Maximum difference between a modification mass and a glycan database mass"
+        )
+        settings_layout.addWidget(self.glycan_mass_tolerance)
+
+        settings_layout.addStretch()
+        glycan_layout.addWidget(settings_container)
+
+        def on_glycan_toggle(state):
+            enabled = self.enable_glycan_y.isChecked()
+            self.glycan_y_max_charge.setEnabled(enabled)
+            self.glycan_mass_tolerance.setEnabled(enabled)
+
+        self.enable_glycan_y.stateChanged.connect(on_glycan_toggle)
+        on_glycan_toggle(None)
+
+        glycan_group.setLayout(glycan_layout)
+        return glycan_group
+
+    def _create_localisation_group(self):
+        """Create site localisation group"""
+        loc_group = QGroupBox("Site Localisation (Optional)")
+        loc_group.setStyleSheet(EditorConstants.get_groupbox_style())
+        loc_layout = QVBoxLayout()
+
+        info = QLabel(
+            "For PSMs carrying a relocalisable modification, every placement on the "
+            "allowed residues is scored and the highest Rescore is kept. The runner-up "
+            "sites and score are reported in Loc_* columns. Fixed modifications are "
+            "never moved."
+        )
+        info.setStyleSheet(f"color: {EditorConstants.GRAY_500()}; font-style: italic;")
+        info.setWordWrap(True)
+        loc_layout.addWidget(info)
+
+        self.enable_localisation = QCheckBox("Localise modification sites")
+        self.enable_localisation.setStyleSheet(EditorConstants.get_checkbox_style())
+        loc_layout.addWidget(self.enable_localisation)
+
+        settings_container = QWidget()
+        settings_layout = QHBoxLayout(settings_container)
+        settings_layout.setContentsMargins(20, 5, 0, 0)
+
+        self.localisation_config_button = QPushButton("Configure modifications...")
+        self.localisation_config_button.setStyleSheet(
+            EditorConstants.get_pushbutton_style("secondary")
+        )
+        self.localisation_config_button.clicked.connect(
+            self._open_localisation_config
+        )
+        settings_layout.addWidget(self.localisation_config_button)
+
+        cap_label = QLabel("Max isoforms per PSM:")
+        cap_label.setStyleSheet(StyleSheet.get_label_style())
+        settings_layout.addWidget(cap_label)
+
+        self.localisation_max_isoforms = QSpinBox()
+        self.localisation_max_isoforms.setStyleSheet(EditorConstants.get_spinbox_style())
+        self.localisation_max_isoforms.setRange(2, 100000)
+        self.localisation_max_isoforms.setValue(500)
+        self.localisation_max_isoforms.setToolTip(
+            "PSMs with more possible placements than this keep their original "
+            "sites and are flagged Loc_Status = over_cap"
+        )
+        settings_layout.addWidget(self.localisation_max_isoforms)
+
+        settings_layout.addStretch()
+        loc_layout.addWidget(settings_container)
+
+        self.localisation_summary = QLabel()
+        self.localisation_summary.setStyleSheet(StyleSheet.get_label_style())
+        self.localisation_summary.setWordWrap(True)
+        loc_layout.addWidget(self.localisation_summary)
+
+        def on_localisation_toggle(state):
+            enabled = self.enable_localisation.isChecked()
+            self.localisation_config_button.setEnabled(enabled)
+            self.localisation_max_isoforms.setEnabled(enabled)
+
+        self.enable_localisation.stateChanged.connect(on_localisation_toggle)
+        on_localisation_toggle(None)
+        self._update_localisation_summary()
+
+        loc_group.setLayout(loc_layout)
+        return loc_group
+
+    def _open_localisation_config(self):
+        """Open the fixed/relocalise configuration for mods in the loaded PSMs"""
+        merged_df = getattr(self.parent.experiment_data_manager, "merged_df", None)
+        mass_counts = collect_modification_masses(merged_df)
+        if not mass_counts:
+            UIHelpers.show_validation_error(
+                self.parent,
+                "No Modifications",
+                "No modifications found. Load search files and run 'Prepare data' first.",
+            )
+            return
+
+        dlg = LocalisationConfigDialog(
+            mass_counts,
+            central_mod_db=getattr(self.parent, "central_mod_db", None),
+            current_rules=self.localisation_rules,
+            parent=self.parent,
+        )
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.localisation_rules = dlg.rules()
+            self._update_localisation_summary()
+
+    def _localisation_rules_text(self):
+        central_db = getattr(self.parent, "central_mod_db", None)
+        parts = []
+        for mass, rule in self.localisation_rules.items():
+            name = central_db.find_by_mass(mass) if central_db else None
+            label = name if name else f"{mass:+.4f}"
+            stack = ", stacking" if rule["stack"] else ""
+            parts.append(f"{label} on {rule['aa'] or 'any residue'}{stack}")
+        return ", ".join(parts)
+
+    def _update_localisation_summary(self):
+        if self.localisation_rules:
+            self.localisation_summary.setText(
+                f"Relocalise: {self._localisation_rules_text()}"
+            )
+        else:
+            self.localisation_summary.setText(
+                "No modifications set to relocalise (all fixed)."
+            )
+
     def _get_display_paths(self, file_paths):
         """
         Remove common prefix from file paths for cleaner display.
@@ -776,6 +959,26 @@ class RescoringTabManager:
                 "Ion Type Required",
                 "c migration tracking requires the c ion type to be selected "
                 "in the Annotation tab.",
+            )
+            return
+
+        if self.enable_glycan_y.isChecked() and not getattr(
+            self.parent, "glycan_compositions", None
+        ):
+            UIHelpers.show_validation_error(
+                self.parent,
+                "No Glycan Compositions",
+                "Glycan Y-ion calculation requires glycan compositions. Add them in the "
+                "Glycan Database editor first.",
+            )
+            return
+
+        if self.enable_localisation.isChecked() and not self.localisation_rules:
+            UIHelpers.show_validation_error(
+                self.parent,
+                "No Modifications to Localise",
+                "Site localisation is enabled but every modification is Fixed. "
+                "Use 'Configure modifications...' to choose which to relocalise.",
             )
             return
 
@@ -1004,6 +1207,20 @@ class RescoringTabManager:
         if hasattr(self, "enable_c_migration") and self.enable_c_migration.isChecked():
             ion_lines.append(
                 f"• c Migration Tracking: charges {self.migration_min_charge.value()}-{self.migration_max_charge.value()}"
+            )
+
+        # Glycan Y-ions
+        if hasattr(self, "enable_glycan_y") and self.enable_glycan_y.isChecked():
+            ion_lines.append(
+                f"• Glycan Y-ions: charges 1-{self.glycan_y_max_charge.value()}, "
+                f"glycan match ±{self.glycan_mass_tolerance.value():.3f} Da"
+            )
+
+        # Site localisation
+        if hasattr(self, "enable_localisation") and self.enable_localisation.isChecked():
+            ion_lines.append(
+                f"• Site localisation: {self._localisation_rules_text()} "
+                f"(max {self.localisation_max_isoforms.value()} isoforms/PSM)"
             )
 
         return "\n".join(ion_lines)
@@ -1238,6 +1455,17 @@ class RescoringTabManager:
                 "c_migration_enabled": self.enable_c_migration.isChecked(),
                 "min_charge": self.migration_min_charge.value(),
                 "max_charge": self.migration_max_charge.value(),
+            },
+            "glycan_settings": {
+                "enabled": self.enable_glycan_y.isChecked(),
+                "max_charge": self.glycan_y_max_charge.value(),
+                "tolerance_da": self.glycan_mass_tolerance.value(),
+                "compositions": list(getattr(self.parent, "glycan_compositions", [])),
+            },
+            "localisation_settings": {
+                "enabled": self.enable_localisation.isChecked(),
+                "max_isoforms": self.localisation_max_isoforms.value(),
+                "rules": dict(self.localisation_rules),
             },
         }
 

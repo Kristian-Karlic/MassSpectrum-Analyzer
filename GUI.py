@@ -1,9 +1,9 @@
 import sys
 import logging
-
+from pathlib import Path
 from PyQt6.QtWidgets import QApplication, QWidget
 from PyQt6.QtGui import QGuiApplication, QCloseEvent
-
+from utils.resource_path import get_user_data_dir, is_bundled
 from utils.utility_classes.toaster import QToaster
 from utils.utilities import WindowSizeManager
 from utils.gui_tabs.fragmentation_tab import FragmentationTabManager
@@ -20,12 +20,41 @@ from utils.mixins._gui_ion_panel_mixin import _GUIIonPanelMixin
 from utils.mixins._gui_data_mixin import _GUIDataMixin
 from utils.mixins._gui_theme_mixin import _GUIThemeMixin
 
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(), logging.FileHandler("mass_spec_tool.log")],
-)
+def _log_file_path() -> Path:
+    """Resolve a writable location for the log file.
+
+    A frozen build can be installed anywhere, including read-only folders, so
+    the log goes to the per-user data directory rather than next to the
+    executable. Running from source keeps the log in the working directory.
+    """
+    if is_bundled():
+        return Path(get_user_data_dir()) / "logs" / "mass_spec_tool.log"
+    return Path("mass_spec_tool.log")
+
+
+def _configure_logging() -> None:
+    """Configure logging without letting an unwritable log kill startup."""
+    handlers: list[logging.Handler] = []
+
+    # A windowed build has no console attached, so sys.stderr may be unusable.
+    if sys.stderr is not None:
+        handlers.append(logging.StreamHandler())
+
+    log_path = _log_file_path()
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(log_path, encoding="utf-8"))
+    except OSError:
+        pass
+
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=handlers,
+    )
+
+
+_configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -216,23 +245,6 @@ class PeptideFragmentationApp(
 
 
 def main():
-    # When running as a bundled .exe, seed the writable user-data directory so
-    # editable databases (glycan compositions, custom monosaccharides,
-    # modifications, presets, …) persist across runs. Without this, edits are
-    # written into PyInstaller's read-only _MEIPASS temp folder and lost on exit.
-    try:
-        from utils.resource_path import (
-            is_bundled,
-            ensure_user_data_structure,
-            initialize_user_data_files,
-        )
-
-        if is_bundled():
-            ensure_user_data_structure()
-            initialize_user_data_files()
-    except Exception:
-        logger.exception("Failed to initialize user data directory")
-
     app = QApplication(sys.argv)
     window = PeptideFragmentationApp()
     window.show()

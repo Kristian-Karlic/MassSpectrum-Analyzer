@@ -2,6 +2,14 @@ import ast
 import logging
 import pandas as pd
 from utils import calculate_fragment_ions, filter_ions, match_fragment_ions_fast
+from utils.peak_matching.fragmentation import _clean_base_type
+from utils.rescoring.localisation import (
+    candidate_site_count,
+    enumerate_isoforms,
+    format_sites,
+    movable_indices,
+    site_evidence,
+)
 import math
 from tqdm import tqdm
 from concurrent.futures import as_completed, ProcessPoolExecutor
@@ -41,6 +49,101 @@ def safe_tqdm(*args, **kwargs):
         return tqdm(*args, **kwargs)
 
 
+def split_dataframe(df, n_batches):
+    """
+    Split a DataFrame into ~equal row batches, preserving index and columns.
+    Replacement for np.array_split, which returns ndarrays on NumPy 2.x.
+    """
+    n_batches = max(1, min(n_batches, len(df))) if len(df) else 1
+    bounds = np.linspace(0, len(df), n_batches + 1, dtype=int)
+    return [df.iloc[bounds[i] : bounds[i + 1]] for i in range(n_batches)]
+
+
+def normalize_custom_ion_series(custom_ion_series):
+    """Normalize custom ion series dicts (GUI or normalized keys) for workers."""
+    if not custom_ion_series:
+        return custom_ion_series
+    return [
+        {
+            "base": ion.get("base", ion.get("Base Ion", "y")),
+            "name": ion.get("name", ion.get("Series Name", "Custom")),
+            "offset": float(ion.get("offset", ion.get("Mass Offset", 0))),
+            "color": ion.get("color", ion.get("Color", "#CCCCCC")),
+            "restriction": ion.get("restriction", ion.get("Restriction", "")),
+        }
+        for ion in custom_ion_series
+    ]
+
+
+def to_diagnostic_tuples(diagnostic_ions):
+    """Convert diagnostic ion dicts to (name, mass, color) tuples, or None."""
+    if not diagnostic_ions:
+        return None
+    diag_tuples = []
+    for d in diagnostic_ions:
+        if isinstance(d, dict):
+            diag_tuples.append((d["Name"], d["Mass"], d["Color"]))
+        else:
+            diag_tuples.append(d)
+    return diag_tuples or None
+
+
+def parse_modifications(raw_mods):
+    """Parsed Modifications cell -> list of (mass, position), or None."""
+    if raw_mods is None or (isinstance(raw_mods, float) and pd.isna(raw_mods)):
+        return None
+    if isinstance(raw_mods, str):
+        return ast.literal_eval(raw_mods) if raw_mods else None
+    return raw_mods
+
+
+def theoretical_fragment_tuples(
+    peptide_sequence,
+    modifications,
+    max_charge,
+    selected_ions,
+    selected_internal_ions,
+    custom_ion_series,
+    max_neutral_losses,
+    calculate_isotopes,
+    isotope_max,
+    mod_nl_config=None,
+    glycan_composition_str=None,
+    glycan_max_charge=None,
+):
+    """Calculate filtered theoretical fragments as tuples for fast matching."""
+    fragment_ions_df_unfiltered = calculate_fragment_ions(
+        peptide_sequence,
+        modifications,
+        max_charge,
+        selected_ions,
+        selected_internal_ions,
+        custom_ion_series,
+        max_neutral_losses,
+        calculate_isotopes,
+        isotope_max,
+        mod_neutral_losses=mod_nl_config,
+        glycan_composition_str=glycan_composition_str,
+        glycan_max_charge=glycan_max_charge,
+    )
+    fragment_ions_df = filter_ions(fragment_ions_df_unfiltered)
+
+    return list(
+        zip(
+            fragment_ions_df["Theoretical Mass"],
+            fragment_ions_df["Ion Number"],
+            fragment_ions_df["Ion Type"],
+            fragment_ions_df["Fragment Sequence"],
+            fragment_ions_df["Neutral Loss"],
+            fragment_ions_df["Charge"],
+            fragment_ions_df["Isotope"],
+            fragment_ions_df["Color"],
+            fragment_ions_df["Base Type"],
+            fragment_ions_df["Modified Fragment"],
+        )
+    )
+
+
 def process_theoretical_batch(
     batch_df,
     custom_ion_series=None,
@@ -64,20 +167,7 @@ def process_theoretical_batch(
         selected_internal_ions = []
 
     # Normalize custom ion series format in worker
-    if custom_ion_series:
-        normalized_custom = []
-        for ion in custom_ion_series:
-            # Handle both GUI format and normalized format
-            normalized_custom.append(
-                {
-                    "base": ion.get("base", ion.get("Base Ion", "y")),
-                    "name": ion.get("name", ion.get("Series Name", "Custom")),
-                    "offset": float(ion.get("offset", ion.get("Mass Offset", 0))),
-                    "color": ion.get("color", ion.get("Color", "#CCCCCC")),
-                    "restriction": ion.get("restriction", ion.get("Restriction", "")),
-                }
-            )
-        custom_ion_series = normalized_custom
+    custom_ion_series = normalize_custom_ion_series(custom_ion_series)
 
     local_cache = {}
     results = {}
@@ -89,16 +179,25 @@ def process_theoretical_batch(
     idx_peptide = col_idx.get("Peptide")
     idx_parsed_modifications = col_idx.get("Parsed Modifications")
     idx_mod_nl_config = col_idx.get("Mod_NL_Config")
+    idx_glycan_composition = col_idx.get("Glycan_Composition")
 
-    def get_cache_key(modified_peptide, charge):
-        return (modified_peptide, charge)
+    def get_cache_key(peptide_sequence, modifications, charge, glycan_composition):
+        # Keyed on the parsed mods rather than the Modified Peptide string, which
+        # can be the bare sequence for some search engines and is stale after
+        # site localisation.
+        mods_key = tuple(tuple(m) for m in modifications) if modifications else ()
+        return (peptide_sequence, mods_key, charge, glycan_composition)
 
     def calculate_theoretical(
-        peptide_sequence, modifications, max_charge, mod_nl_config=None
+        peptide_sequence,
+        modifications,
+        max_charge,
+        mod_nl_config=None,
+        row_glycan_composition=None,
     ):
         """Calculate theoretical fragments for a given peptide and modifications."""
         try:
-            fragment_ions_df_unfiltered = calculate_fragment_ions(
+            return theoretical_fragment_tuples(
                 peptide_sequence,
                 modifications,
                 max_charge,
@@ -108,25 +207,9 @@ def process_theoretical_batch(
                 max_neutral_losses,
                 calculate_isotopes,
                 isotope_max,
-                mod_neutral_losses=mod_nl_config,
-                glycan_composition_str=glycan_composition_str,
+                mod_nl_config=mod_nl_config,
+                glycan_composition_str=row_glycan_composition,
                 glycan_max_charge=glycan_max_charge,
-            )
-            fragment_ions_df = filter_ions(fragment_ions_df_unfiltered)
-
-            return list(
-                zip(
-                    fragment_ions_df["Theoretical Mass"],
-                    fragment_ions_df["Ion Number"],
-                    fragment_ions_df["Ion Type"],
-                    fragment_ions_df["Fragment Sequence"],
-                    fragment_ions_df["Neutral Loss"],
-                    fragment_ions_df["Charge"],
-                    fragment_ions_df["Isotope"],
-                    fragment_ions_df["Color"],
-                    fragment_ions_df["Base Type"],
-                    fragment_ions_df["Modified Fragment"],
-                )
             )
         except KeyError as e:
             logger.error(f"KeyError in calculate_theoretical: {e}")
@@ -146,20 +229,24 @@ def process_theoretical_batch(
                 else None
             )
             max_charge = row_tuple[idx_charge] if idx_charge is not None else None
-            cache_key = get_cache_key(modified_peptide, max_charge)
+            # Per-PSM glycan (detected from modification masses) overrides the global one
+            row_glycan_composition = (
+                row_tuple[idx_glycan_composition]
+                if idx_glycan_composition is not None
+                else glycan_composition_str
+            )
+            if not isinstance(row_glycan_composition, str):  # None / NaN guard
+                row_glycan_composition = None
             peptide_sequence = row_tuple[idx_peptide] if idx_peptide is not None else ""
 
-            raw_mods = (
+            modifications = parse_modifications(
                 row_tuple[idx_parsed_modifications]
                 if idx_parsed_modifications is not None
                 else None
             )
-            if raw_mods is None or (isinstance(raw_mods, float) and pd.isna(raw_mods)):
-                modifications = None
-            elif isinstance(raw_mods, str):
-                modifications = ast.literal_eval(raw_mods) if raw_mods else None
-            else:
-                modifications = raw_mods
+            cache_key = get_cache_key(
+                peptide_sequence, modifications, max_charge, row_glycan_composition
+            )
 
             # Modification-specific neutral loss config (precomputed)
             mod_nl_config = (
@@ -174,7 +261,11 @@ def process_theoretical_batch(
                 results[idx] = theoretical_fragments
             else:
                 theoretical_fragments = calculate_theoretical(
-                    peptide_sequence, modifications, max_charge, mod_nl_config
+                    peptide_sequence,
+                    modifications,
+                    max_charge,
+                    mod_nl_config,
+                    row_glycan_composition,
                 )
                 local_cache[cache_key] = theoretical_fragments
                 results[idx] = theoretical_fragments
@@ -215,16 +306,7 @@ def process_matching_batch(batch_df, diagnostic_ions, ppm_tolerance):
     batch_stats = {"processed": 0, "match_errors": 0, "zero_matches": 0}
 
     # Convert diagnostic ion dicts to (name, mass, color) tuples if needed
-    diag_tuples = None
-    if diagnostic_ions:
-        diag_tuples = []
-        for d in diagnostic_ions:
-            if isinstance(d, dict):
-                diag_tuples.append((d["Name"], d["Mass"], d["Color"]))
-            else:
-                diag_tuples.append(d)
-        if not diag_tuples:
-            diag_tuples = None
+    diag_tuples = to_diagnostic_tuples(diagnostic_ions)
 
     col_idx = {col: pos for pos, col in enumerate(batch_df.columns, start=1)}
     idx_theoretical = col_idx.get("Theoretical_Fragments")
@@ -351,9 +433,7 @@ def process_fragments(
     processed_df["Theoretical_Fragments"] = [[] for _ in range(n_total)]
 
     # Create batches for Phase 1
-    batches_phase1 = np.array_split(
-        processed_df, max(1, len(processed_df) // optimal_batch_size)
-    )
+    batches_phase1 = split_dataframe(processed_df, len(processed_df) // optimal_batch_size)
     logger.debug(f"[OPTIMIZATION] Phase 1: {len(batches_phase1)} batches")
 
     total_cache_hits = 0
@@ -431,9 +511,7 @@ def process_fragments(
 
     processed_df["matched_fragments"] = [None for _ in range(n_total)]
 
-    batches_phase2 = np.array_split(
-        processed_df, max(1, len(processed_df) // optimal_batch_size)
-    )
+    batches_phase2 = split_dataframe(processed_df, len(processed_df) // optimal_batch_size)
     logger.debug(f"[OPTIMIZATION] Phase 2: {len(batches_phase2)} batches")
 
     total_match_errors = 0
@@ -660,6 +738,16 @@ def count_ions_batch(batch_df, ion_types_to_count, scoring_max_charge=0):
 
                 # --- Ion type counting ---
                 for it in ion_types_to_count:
+                    # Glycan Y-ions are identified by base type only; their labels
+                    # (Y[...], Y0) must not leak into other ion-type matches.
+                    if (bt == "GlycanY") != (it == "GlycanY"):
+                        continue
+                    if it == "GlycanY":
+                        # Ion Number is the residue count, so key unique Y-ions
+                        # by composition label instead.
+                        ion_count_map[it] += 1
+                        unique_pos_map[it].add(ion_type_full)
+                        continue
                     if it == "Mod-NL":
                         if not _is_mod_nl_label(nl):
                             continue
@@ -779,7 +867,7 @@ def count_ion_types_parallel(
 
     # CHANGED: Use larger batches (aim for 4-8 batches per worker)
     optimal_batch_size = max(200, len(merged_df) // (max_workers * 4))
-    batches = np.array_split(merged_df, max(1, len(merged_df) // optimal_batch_size))
+    batches = split_dataframe(merged_df, len(merged_df) // optimal_batch_size)
 
     logger.debug(
         f"[OPTIMIZATION] Using {len(batches)} batches (batch size ~{optimal_batch_size})"
@@ -1164,7 +1252,7 @@ def calculate_migration_ratios_parallel(
         merged_df["c_migration"] = ""
 
     optimal_batch_size = max(200, len(merged_df) // (max_workers * 4))
-    batches = np.array_split(merged_df, max(1, len(merged_df) // optimal_batch_size))
+    batches = split_dataframe(merged_df, len(merged_df) // optimal_batch_size)
 
     logger.debug(
         f"[MIGRATION] Using {len(batches)} batches (batch size ~{optimal_batch_size})"
@@ -1207,6 +1295,244 @@ def calculate_migration_ratios_parallel(
 # ---------------------------------------------------------
 # Parallelized score calculation (Annotated TIC% + Rescore)
 # ---------------------------------------------------------
+_N_TERM_TYPES = {"b", "a", "c", "c-1", "d", "da", "db"}
+_C_TERM_TYPES = {"y", "x", "z", "z+1", "w", "wa", "wb", "v"}
+
+# Precomputed factorials for fast lookup (covers up to 200 unique ions per type)
+_FACTORIAL_CACHE = [1] * 201
+for _fi in range(1, 201):
+    _FACTORIAL_CACHE[_fi] = _FACTORIAL_CACHE[_fi - 1] * _fi
+
+_EMPTY_SCORES = (0.0, 0.0, 0, "", 0, 0, 0.0)
+
+
+def score_matched_fragments(
+    matched_fragments,
+    intensity_values,
+    peptide,
+    ion_types_to_use,
+    calc_consecutive=False,
+    calc_complementary=False,
+    scoring_max_charge=0,
+    scoring_nl_in_count=False,
+):
+    """
+    Score one PSM from its matched_fragments tuples.
+
+    Tuple indices: 0=m/z, 1=intensity, 2=Matched, 3=error_ppm, 4=Ion Number,
+                   5=Ion Type, 6=Fragment Sequence, 7=Neutral Loss, 8=Charge,
+                   9=Isotope, 10=Color, 11=Base Type
+
+    Returns (annotated_pct, rescore,
+             consec_longest, consec_detail, comp_pairs, comp_possible, avg_error)
+    """
+    if (
+        matched_fragments is None
+        or len(matched_fragments) == 0
+        or intensity_values is None
+        or len(intensity_values) == 0
+    ):
+        return _EMPTY_SCORES
+
+    total_experimental_intensity = sum(intensity_values)
+    if total_experimental_intensity == 0:
+        return _EMPTY_SCORES
+
+    annotated_pct = 0.0
+    rescore = 0.0
+    consec_longest = 0
+    consec_detail = ""
+    comp_pairs = 0
+    comp_possible = 0
+    avg_error = 0.0
+
+    # Get peptide length for metrics that need it
+    if not isinstance(peptide, str):
+        if peptide is None or (isinstance(peptide, float) and pd.isna(peptide)):
+            peptide = ""
+        else:
+            peptide = str(peptide)
+    pep_len = len(peptide) if peptide else 0
+
+    # Single pass over matched fragments for all calculations
+    annotated_intensity = 0.0
+    ion_type_positions = {ion_type: set() for ion_type in ion_types_to_use}
+    intensity_sum = 0.0
+
+    # Additional tracking for optional metrics
+    mono_positions_by_base = {}  # base_type -> set of ion_numbers (for consecutive)
+    n_positions = set()  # N-terminal ion numbers (for complementary)
+    c_positions = set()  # C-terminal ion numbers (for complementary)
+    total_mono_matched = 0  # total monoisotopic matched count
+    ppm_error_sum = 0.0  # sum of absolute ppm errors for matched ions
+    ppm_error_count = 0  # count of matched ions with valid ppm errors
+
+    for frag in matched_fragments:
+        matched_status = frag[2]
+        if matched_status is None or matched_status == "No Match":
+            continue
+
+        try:
+            intensity = float(frag[1])
+        except (ValueError, TypeError):
+            continue
+
+        try:
+            isotope = int(float(frag[9]))
+        except (ValueError, TypeError):
+            isotope = 0
+
+        # Annotated TIC: sum ALL matched peak intensities (all isotopes)
+        annotated_intensity += intensity
+
+        # Accumulate ppm errors for Avg_error calculation
+        try:
+            ppm_err = abs(float(frag[3]))
+            ppm_error_sum += ppm_err
+            ppm_error_count += 1
+        except (ValueError, TypeError):
+            pass
+
+        # Extract base type and ion number for scoring
+        base_type = str(frag[11]).strip() if frag[11] is not None else ""
+
+        # MH ions are never used in scoring
+        if base_type == "MH":
+            continue
+
+        try:
+            ion_number = int(frag[4])
+        except (ValueError, TypeError):
+            ion_number = None
+
+        # Accumulate intensity for scoring (all isotopes), excluding MH
+        if base_type in ion_types_to_use and ion_number is not None:
+            intensity_sum += intensity
+
+        # Everything below is monoisotopic only (ion counting, consecutive, complementary)
+        if isotope != 0:
+            continue
+
+        # ── Complementary pairs: ALL N/C-term ions, no charge or type filter ──
+        # Runs before any restriction so any combination (y/b, y/a, c/z, b/z, etc.)
+        # at a backbone position is captured.
+        if calc_complementary and pep_len >= 2 and ion_number is not None:
+            ion_type_full = str(frag[5]).lower() if frag[5] else ""
+            if "z+1" in ion_type_full:
+                effective = "z+1"
+            elif "c-1" in ion_type_full:
+                effective = "c-1"
+            else:
+                effective = base_type
+            if effective in _N_TERM_TYPES:
+                n_positions.add(ion_number)
+            elif effective in _C_TERM_TYPES:
+                c_positions.add(ion_number)
+
+        # ── Consecutive series: selected types only, no charge filter ──
+        if calc_consecutive and ion_number is not None and base_type in ion_types_to_use:
+            mono_positions_by_base.setdefault(base_type, set()).add(ion_number)
+
+        # ── X!Tandem: charge filter applies only here ──
+        if scoring_max_charge > 0:
+            try:
+                charge = int(float(frag[8]))
+            except (ValueError, TypeError):
+                charge = 1
+            if charge > scoring_max_charge:
+                continue
+
+        # X!Tandem: only count ions in the selected types
+        if base_type not in ion_types_to_use:
+            continue
+
+        if ion_number is not None:
+            # Check if this is a standard neutral loss (H2O, NH3, etc.)
+            nl = str(frag[7]) if frag[7] is not None else ""
+            is_standard_nl = (
+                nl != ""
+                and nl != "None"
+                and nl != "nan"
+                and not nl.startswith(("ModNL", "LabileLoss", "ModRM"))
+            )
+
+            # Standard NL ions only count toward positions if setting enabled
+            if not is_standard_nl or scoring_nl_in_count:
+                ion_type_positions[base_type].add(ion_number)
+            total_mono_matched += 1
+
+    # Annotated TIC %
+    if annotated_intensity > 0:
+        annotated_pct = (annotated_intensity / total_experimental_intensity) * 100.0
+
+    # Rescore: HS = ln(∑Ii * Nb! * Ny!)
+    factorial_product = 1
+    for ion_type in ion_types_to_use:
+        unique_count = len(ion_type_positions[ion_type])
+        if unique_count > 0:
+            factorial_product *= _FACTORIAL_CACHE[min(unique_count, 200)]
+
+    if intensity_sum > 0 and factorial_product > 0:
+        rescore = math.log(intensity_sum * factorial_product)
+
+    # --- Optional: Consecutive Ion Series ---
+    if calc_consecutive and mono_positions_by_base:
+        try:
+            overall_longest = 0
+            per_type_runs = {}
+            for bt, positions in mono_positions_by_base.items():
+                sorted_pos = sorted(positions)
+                if not sorted_pos:
+                    continue
+                max_run = current_run = 1
+                for i in range(1, len(sorted_pos)):
+                    if sorted_pos[i] == sorted_pos[i - 1] + 1:
+                        current_run += 1
+                        if current_run > max_run:
+                            max_run = current_run
+                    else:
+                        current_run = 1
+                per_type_runs[bt] = max_run
+                if max_run > overall_longest:
+                    overall_longest = max_run
+            consec_longest = overall_longest
+            consec_detail = ", ".join(
+                f"{k}:{v}" for k, v in sorted(per_type_runs.items()) if v > 0
+            )
+        except Exception:
+            consec_longest = 0
+            consec_detail = ""
+
+    # --- Optional: Complementary Pairs ---
+    if calc_complementary and pep_len >= 2:
+        try:
+            paired = 0
+            possible = pep_len - 1
+            for pos in n_positions:
+                complement = pep_len - pos
+                if complement in c_positions:
+                    paired += 1
+            comp_pairs = paired
+            comp_possible = possible
+        except Exception:
+            comp_pairs = 0
+            comp_possible = max(pep_len - 1, 0)
+
+    # --- Average absolute ppm error ---
+    if ppm_error_count > 0:
+        avg_error = round(ppm_error_sum / ppm_error_count, 4)
+
+    return (
+        annotated_pct,
+        rescore,
+        consec_longest,
+        consec_detail,
+        comp_pairs,
+        comp_possible,
+        avg_error,
+    )
+
+
 def compute_scores_batch(
     batch_df,
     ion_types_to_use,
@@ -1221,26 +1547,15 @@ def compute_scores_batch(
     Works directly with matched_fragments tuples to avoid per-row DataFrame creation.
     Must be at top level for pickling by ProcessPoolExecutor.
 
-    Tuple indices: 0=m/z, 1=intensity, 2=Matched, 3=error_ppm, 4=Ion Number,
-                   5=Ion Type, 6=Fragment Sequence, 7=Neutral Loss, 8=Charge,
-                   9=Isotope, 10=Color, 11=Base Type
-
     Returns dict[idx] -> (annotated_pct, rescore,
-                          consec_longest, consec_detail, comp_pairs, comp_possible)
+                          consec_longest, consec_detail, comp_pairs, comp_possible,
+                          avg_error)
     """
     if scoring_methods is None:
         scoring_methods = {}
 
     calc_consecutive = scoring_methods.get("consecutive_series", False)
     calc_complementary = scoring_methods.get("complementary_pairs", False)
-
-    n_term_types = {"b", "a", "c", "c-1", "d", "da", "db"}
-    c_term_types = {"y", "x", "z", "z+1", "w", "wa", "wb", "v"}
-
-    # Precomputed factorials for fast lookup (covers up to 200 unique ions per type)
-    _FACTORIAL_CACHE = [1] * 201
-    for _fi in range(1, 201):
-        _FACTORIAL_CACHE[_fi] = _FACTORIAL_CACHE[_fi - 1] * _fi
 
     results = {}
 
@@ -1251,240 +1566,15 @@ def compute_scores_batch(
 
     for row_tuple in batch_df.itertuples(index=True, name=None):
         idx = row_tuple[0]
-        matched_fragments = (
-            row_tuple[idx_matched_fragments]
-            if idx_matched_fragments is not None
-            else None
-        )
-        intensity_values = row_tuple[idx_intensity] if idx_intensity is not None else []
-
-        annotated_pct = 0.0
-        rescore = 0.0
-        consec_longest = 0
-        consec_detail = ""
-        comp_pairs = 0
-        comp_possible = 0
-        avg_error = 0.0
-
-        if (
-            matched_fragments is None
-            or len(matched_fragments) == 0
-            or intensity_values is None
-            or len(intensity_values) == 0
-        ):
-            results[idx] = (
-                annotated_pct,
-                rescore,
-                consec_longest,
-                consec_detail,
-                comp_pairs,
-                comp_possible,
-                avg_error,
-            )
-            continue
-
-        total_experimental_intensity = sum(intensity_values)
-        if total_experimental_intensity == 0:
-            results[idx] = (
-                annotated_pct,
-                rescore,
-                consec_longest,
-                consec_detail,
-                comp_pairs,
-                comp_possible,
-                avg_error,
-            )
-            continue
-
-        # Get peptide length for metrics that need it
-        peptide = row_tuple[idx_peptide] if idx_peptide is not None else ""
-        if not isinstance(peptide, str):
-            if peptide is None or (isinstance(peptide, float) and pd.isna(peptide)):
-                peptide = ""
-            else:
-                peptide = str(peptide)
-        pep_len = len(peptide) if peptide else 0
-
-        # Single pass over matched fragments for all calculations
-        annotated_intensity = 0.0
-        ion_type_positions = {ion_type: set() for ion_type in ion_types_to_use}
-        intensity_sum = 0.0
-
-        # Additional tracking for optional metrics
-        mono_positions_by_base = {}  # base_type -> set of ion_numbers (for consecutive)
-        n_positions = set()  # N-terminal ion numbers (for complementary)
-        c_positions = set()  # C-terminal ion numbers (for complementary)
-        total_mono_matched = 0  # total monoisotopic matched count
-        ppm_error_sum = 0.0  # sum of absolute ppm errors for matched ions
-        ppm_error_count = 0  # count of matched ions with valid ppm errors
-
-        for frag in matched_fragments:
-            matched_status = frag[2]
-            if matched_status is None or matched_status == "No Match":
-                continue
-
-            try:
-                intensity = float(frag[1])
-            except (ValueError, TypeError):
-                continue
-
-            try:
-                isotope = int(float(frag[9]))
-            except (ValueError, TypeError):
-                isotope = 0
-
-            # Annotated TIC: sum ALL matched peak intensities (all isotopes)
-            annotated_intensity += intensity
-
-            # Accumulate ppm errors for Avg_error calculation
-            try:
-                ppm_err = abs(float(frag[3]))
-                ppm_error_sum += ppm_err
-                ppm_error_count += 1
-            except (ValueError, TypeError):
-                pass
-
-            # Extract base type and ion number for scoring
-            base_type = str(frag[11]).strip() if frag[11] is not None else ""
-
-            # MH ions are never used in scoring
-            if base_type == "MH":
-                continue
-
-            try:
-                ion_number = int(frag[4])
-            except (ValueError, TypeError):
-                ion_number = None
-
-            # Accumulate intensity for scoring (all isotopes), excluding MH
-            if base_type in ion_types_to_use and ion_number is not None:
-                intensity_sum += intensity
-
-            # Everything below is monoisotopic only (ion counting, consecutive, complementary)
-            if isotope != 0:
-                continue
-
-            # ── Complementary pairs: ALL N/C-term ions, no charge or type filter ──
-            # Runs before any restriction so any combination (y/b, y/a, c/z, b/z, etc.)
-            # at a backbone position is captured.
-            if calc_complementary and pep_len >= 2 and ion_number is not None:
-                ion_type_full = str(frag[5]).lower() if frag[5] else ""
-                if "z+1" in ion_type_full:
-                    effective = "z+1"
-                elif "c-1" in ion_type_full:
-                    effective = "c-1"
-                else:
-                    effective = base_type
-                if effective in n_term_types:
-                    n_positions.add(ion_number)
-                elif effective in c_term_types:
-                    c_positions.add(ion_number)
-
-            # ── Consecutive series: selected types only, no charge filter ──
-            if (
-                calc_consecutive
-                and ion_number is not None
-                and base_type in ion_types_to_use
-            ):
-                mono_positions_by_base.setdefault(base_type, set()).add(ion_number)
-
-            # ── X!Tandem: charge filter applies only here ──
-            if scoring_max_charge > 0:
-                try:
-                    charge = int(float(frag[8]))
-                except (ValueError, TypeError):
-                    charge = 1
-                if charge > scoring_max_charge:
-                    continue
-
-            # X!Tandem: only count ions in the selected types
-            if base_type not in ion_types_to_use:
-                continue
-
-            if ion_number is not None:
-                # Check if this is a standard neutral loss (H2O, NH3, etc.)
-                nl = str(frag[7]) if frag[7] is not None else ""
-                is_standard_nl = (
-                    nl != ""
-                    and nl != "None"
-                    and nl != "nan"
-                    and not nl.startswith(("ModNL", "LabileLoss", "ModRM"))
-                )
-
-                # Standard NL ions only count toward positions if setting enabled
-                if not is_standard_nl or scoring_nl_in_count:
-                    ion_type_positions[base_type].add(ion_number)
-                total_mono_matched += 1
-
-        # Annotated TIC %
-        if annotated_intensity > 0:
-            annotated_pct = (annotated_intensity / total_experimental_intensity) * 100.0
-
-        # Rescore: HS = ln(∑Ii * Nb! * Ny!)
-        factorial_product = 1
-        for ion_type in ion_types_to_use:
-            unique_count = len(ion_type_positions[ion_type])
-            if unique_count > 0:
-                factorial_product *= _FACTORIAL_CACHE[min(unique_count, 200)]
-
-        if intensity_sum > 0 and factorial_product > 0:
-            rescore = math.log(intensity_sum * factorial_product)
-
-        # --- Optional: Consecutive Ion Series ---
-        if calc_consecutive and mono_positions_by_base:
-            try:
-                overall_longest = 0
-                per_type_runs = {}
-                for bt, positions in mono_positions_by_base.items():
-                    sorted_pos = sorted(positions)
-                    if not sorted_pos:
-                        continue
-                    max_run = current_run = 1
-                    for i in range(1, len(sorted_pos)):
-                        if sorted_pos[i] == sorted_pos[i - 1] + 1:
-                            current_run += 1
-                            if current_run > max_run:
-                                max_run = current_run
-                        else:
-                            current_run = 1
-                    per_type_runs[bt] = max_run
-                    if max_run > overall_longest:
-                        overall_longest = max_run
-                consec_longest = overall_longest
-                consec_detail = ", ".join(
-                    f"{k}:{v}" for k, v in sorted(per_type_runs.items()) if v > 0
-                )
-            except Exception:
-                consec_longest = 0
-                consec_detail = ""
-
-        # --- Optional: Complementary Pairs ---
-        if calc_complementary and pep_len >= 2:
-            try:
-                paired = 0
-                possible = pep_len - 1
-                for pos in n_positions:
-                    complement = pep_len - pos
-                    if complement in c_positions:
-                        paired += 1
-                comp_pairs = paired
-                comp_possible = possible
-            except Exception:
-                comp_pairs = 0
-                comp_possible = max(pep_len - 1, 0)
-
-        # --- Average absolute ppm error ---
-        if ppm_error_count > 0:
-            avg_error = round(ppm_error_sum / ppm_error_count, 4)
-
-        results[idx] = (
-            annotated_pct,
-            rescore,
-            consec_longest,
-            consec_detail,
-            comp_pairs,
-            comp_possible,
-            avg_error,
+        results[idx] = score_matched_fragments(
+            row_tuple[idx_matched_fragments] if idx_matched_fragments is not None else None,
+            row_tuple[idx_intensity] if idx_intensity is not None else [],
+            row_tuple[idx_peptide] if idx_peptide is not None else "",
+            ion_types_to_use,
+            calc_consecutive=calc_consecutive,
+            calc_complementary=calc_complementary,
+            scoring_max_charge=scoring_max_charge,
+            scoring_nl_in_count=scoring_nl_in_count,
         )
 
     return results
@@ -1531,7 +1621,7 @@ def calculate_scores_parallel(
         logger.debug(f"Optional scoring metrics enabled: {enabled}")
 
     optimal_batch_size = max(200, len(merged_df) // (max_workers * 4))
-    batches = np.array_split(merged_df, max(1, len(merged_df) // optimal_batch_size))
+    batches = split_dataframe(merged_df, len(merged_df) // optimal_batch_size)
 
     logger.debug(
         f"[OPTIMIZATION] Score calculation: {len(batches)} batches (batch size ~{optimal_batch_size})"
@@ -1613,3 +1703,421 @@ def calculate_scores_parallel(
     )
 
     return merged_df
+
+
+# ---------------------------------------------------------
+# Site localisation (best-scoring placement of movable mods)
+# ---------------------------------------------------------
+_C_TERM_BACKBONE = frozenset(("y", "z", "x"))
+_N_TERM_BACKBONE = frozenset(("b", "c", "a"))
+
+
+def _backbone_coverage_pct(matched_rows, pep_len, exclude_chars=""):
+    """% of backbone bonds covered by matched N/C-terminal ions, skipping ions
+    whose Ion Type contains any of *exclude_chars* (mirrors the single-peptide
+    relocalisation widget)."""
+    potential = max(0, pep_len * 2 - 2)
+    if not potential:
+        return 0.0
+    bonds = set()
+    for frag in matched_rows:
+        ion_type = str(frag[5]) if frag[5] is not None else ""
+        if exclude_chars and any(c in ion_type for c in exclude_chars):
+            continue
+        base_type = str(frag[11]).strip() if frag[11] is not None else ""
+        try:
+            num = int(frag[4])
+        except (ValueError, TypeError):
+            continue
+        if base_type in _C_TERM_BACKBONE:
+            bonds.add(("yzx", num))
+        elif base_type in _N_TERM_BACKBONE:
+            bonds.add(("bca", num))
+    return len(bonds) / potential * 100.0
+
+
+_SITE_ION_PREFERENCE = {"c": 0, "b": 1, "a": 2, "z": 0, "y": 1, "x": 2}
+_MOD_NL_TAG_CHARS = frozenset("*^⁰¹²³⁴⁵⁶⁷⁸⁹")
+
+
+def _site_ion_numbers(matched_fragments):
+    """{ion number: label} for matched N- and C-terminal backbone ions, skipping
+    labile-loss (~) ions. Each number is labelled by its best ion: intact
+    ('c3') before partial mod-NL/remainder ions ('c3*', 'c3^'), then c>b>a and
+    z>y>x."""
+    best = ({}, {})  # (N-terminal, C-terminal): num -> (rank, label)
+    for frag in matched_fragments or []:
+        if frag[2] is None or frag[2] == "No Match":
+            continue
+        ion_type = str(frag[5] or "")
+        if "~" in ion_type:
+            continue
+        base_type = _clean_base_type(str(frag[11] or "").strip())
+        try:
+            num = int(frag[4])
+        except (ValueError, TypeError):
+            continue
+        if base_type in _N_TERM_BACKBONE:
+            ions = best[0]
+        elif base_type in _C_TERM_BACKBONE:
+            ions = best[1]
+        else:
+            continue
+        tag = "".join(ch for ch in ion_type if ch in _MOD_NL_TAG_CHARS)
+        rank = (bool(tag), _SITE_ION_PREFERENCE[base_type])
+        if num not in ions or rank < ions[num][0]:
+            ions[num] = (rank, f"{base_type}{num}{tag}")
+    return tuple({num: label for num, (_, label) in ions.items()} for ions in best)
+
+
+def additional_metrics_string(
+    matched_fragments,
+    n_theoretical,
+    intensity_values,
+    peptide,
+    ion_types_to_use,
+    scoring_max_charge=0,
+    scoring_nl_in_count=False,
+):
+    """Quality metrics for one isoform as 'Key=value;...' (single CSV column)."""
+    (tic_pct, _, consec_longest, _, comp_pairs, comp_possible, _) = (
+        score_matched_fragments(
+            matched_fragments,
+            intensity_values,
+            peptide,
+            ion_types_to_use,
+            calc_consecutive=True,
+            calc_complementary=True,
+            scoring_max_charge=scoring_max_charge,
+            scoring_nl_in_count=scoring_nl_in_count,
+        )
+    )
+    matched_fragments = matched_fragments or []
+    matched_rows = [
+        f for f in matched_fragments if f[2] is not None and f[2] != "No Match"
+    ]
+    peaks_pct = (
+        len(matched_rows) / len(matched_fragments) * 100.0 if matched_fragments else 0.0
+    )
+
+    mono_ions = set()
+    for f in matched_rows:
+        try:
+            isotope = int(float(f[9]))
+        except (ValueError, TypeError):
+            isotope = None
+        if isotope == 0:
+            mono_ions.add((f[5], f[4]))
+    theor_pct = len(mono_ions) / n_theoretical * 100.0 if n_theoretical else 0.0
+
+    pep_len = len(peptide)
+    return ";".join(
+        [
+            f"Consecutive={consec_longest}",
+            f"Complementary={comp_pairs}/{comp_possible}",
+            f"TheorFrag%={theor_pct:.1f}",
+            f"Peaks%={peaks_pct:.1f}",
+            f"TIC%={tic_pct:.1f}",
+            f"Cov%={_backbone_coverage_pct(matched_rows, pep_len):.1f}",
+            f"Intact%={_backbone_coverage_pct(matched_rows, pep_len, '*^~'):.1f}",
+            f"Partial%={_backbone_coverage_pct(matched_rows, pep_len, '~'):.1f}",
+        ]
+    )
+
+
+def localise_batch(
+    batch_df,
+    rules,
+    max_isoforms,
+    custom_ion_series,
+    diagnostic_ions,
+    selected_ions,
+    selected_internal_ions,
+    max_neutral_losses,
+    calculate_isotopes,
+    isotope_max,
+    glycan_max_charge,
+    ppm_tolerance,
+    ion_types_to_use,
+    scoring_max_charge=0,
+    scoring_nl_in_count=False,
+):
+    """
+    Worker function: for each PSM, score every placement of its movable
+    modifications with the same fragment/match/Rescore path as the main
+    pipeline and keep the best one.
+    Must be at top level for pickling by ProcessPoolExecutor.
+
+    Returns dict[idx] -> dict with keys mods, status, n_isoforms,
+        original_sites, best_sites, best_score, second_sites, second_score
+    """
+    custom_ion_series = normalize_custom_ion_series(custom_ion_series)
+    diag_tuples = to_diagnostic_tuples(diagnostic_ions)
+
+    col_idx = {col: pos for pos, col in enumerate(batch_df.columns, start=1)}
+    idx_peptide = col_idx.get("Peptide")
+    idx_charge = col_idx.get("Charge")
+    idx_parsed_modifications = col_idx.get("Parsed Modifications")
+    idx_mod_nl_config = col_idx.get("Mod_NL_Config")
+    idx_glycan_composition = col_idx.get("Glycan_Composition")
+    idx_mz = col_idx.get("mz")
+    idx_intensity = col_idx.get("intensity")
+
+    results = {}
+
+    for row_tuple in batch_df.itertuples(index=True, name=None):
+        idx = row_tuple[0]
+        try:
+            peptide = row_tuple[idx_peptide] if idx_peptide is not None else ""
+            mods = parse_modifications(
+                row_tuple[idx_parsed_modifications]
+                if idx_parsed_modifications is not None
+                else None
+            )
+            movable = movable_indices(mods, rules)
+            if not peptide or not movable:
+                continue
+
+            original_sites = format_sites(peptide, mods, movable)
+            enumerated = enumerate_isoforms(peptide, mods, rules, max_isoforms)
+            if enumerated is None:
+                results[idx] = {
+                    "mods": None,
+                    "status": "over_cap",
+                    "n_isoforms": 0,
+                    "original_sites": original_sites,
+                }
+                continue
+
+            isoforms, original_index = enumerated
+            if len(isoforms) < 2:
+                # single_site: only one residue is available at all;
+                # no_alternatives: several residues, but the mods fill them one way
+                single = candidate_site_count(peptide, mods, rules) <= 1
+                results[idx] = {
+                    "mods": None,
+                    "status": "single_site" if single else "no_alternatives",
+                    "n_isoforms": len(isoforms),
+                    "original_sites": original_sites,
+                }
+                continue
+
+            charge = row_tuple[idx_charge] if idx_charge is not None else None
+            mod_nl_config = (
+                row_tuple[idx_mod_nl_config] if idx_mod_nl_config is not None else None
+            )
+            if isinstance(mod_nl_config, float):  # NaN guard
+                mod_nl_config = None
+            glycan = (
+                row_tuple[idx_glycan_composition]
+                if idx_glycan_composition is not None
+                else None
+            )
+            if not isinstance(glycan, str):
+                glycan = None
+            mz_values = row_tuple[idx_mz] if idx_mz is not None else []
+            intensity_values = row_tuple[idx_intensity] if idx_intensity is not None else []
+            user_mz_values = list(zip(mz_values, intensity_values))
+
+            scored = []
+            matched_by_isoform = []  # (matched, n_theoretical) for runner-up metrics
+            for i, isoform in enumerate(isoforms):
+                theoretical = theoretical_fragment_tuples(
+                    peptide,
+                    isoform,
+                    charge,
+                    selected_ions,
+                    selected_internal_ions,
+                    custom_ion_series,
+                    max_neutral_losses,
+                    calculate_isotopes,
+                    isotope_max,
+                    mod_nl_config=mod_nl_config,
+                    glycan_composition_str=glycan,
+                    glycan_max_charge=glycan_max_charge,
+                )
+                matched = (
+                    match_fragment_ions_fast(
+                        theoretical,
+                        user_mz_values,
+                        ppm_tolerance,
+                        diagnostic_ions=diag_tuples,
+                    )
+                    if theoretical and user_mz_values
+                    else None
+                )
+                rescore = score_matched_fragments(
+                    matched,
+                    intensity_values,
+                    peptide,
+                    ion_types_to_use,
+                    scoring_max_charge=scoring_max_charge,
+                    scoring_nl_in_count=scoring_nl_in_count,
+                )[1]
+                scored.append((rescore, i == original_index, i))
+                matched_by_isoform.append((matched, len(theoretical)))
+
+            # Highest Rescore first; ties go to the search-engine localisation
+            scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
+            best_score, _, best_i = scored[0]
+            second_score, _, second_i = scored[1]
+            second_matched, second_n_theoretical = matched_by_isoform[second_i]
+            evidence_n, evidence_c, alt_excluded = site_evidence(
+                peptide,
+                isoforms[best_i],
+                movable,
+                rules,
+                *_site_ion_numbers(matched_by_isoform[best_i][0]),
+            )
+
+            results[idx] = {
+                "mods": isoforms[best_i],
+                "status": "ok",
+                "n_isoforms": len(isoforms),
+                "original_sites": original_sites,
+                "best_sites": format_sites(peptide, isoforms[best_i], movable),
+                "best_score": best_score,
+                "site_evidence_n": evidence_n,
+                "site_evidence_c": evidence_c,
+                "alt_excluded": alt_excluded,
+                "second_sites": format_sites(peptide, isoforms[second_i], movable),
+                "second_score": second_score,
+                "second_metrics": additional_metrics_string(
+                    second_matched,
+                    second_n_theoretical,
+                    intensity_values,
+                    peptide,
+                    ion_types_to_use,
+                    scoring_max_charge=scoring_max_charge,
+                    scoring_nl_in_count=scoring_nl_in_count,
+                ),
+            }
+
+        except Exception as e:
+            logger.debug(f"[Localise] Error localising row {idx}: {e}")
+            results[idx] = {"mods": None, "status": "error", "n_isoforms": 0}
+
+    return results
+
+
+def localise_parallel(
+    df,
+    rules,
+    max_isoforms,
+    max_workers=8,
+    progress_callback=None,
+    cancel_event=None,
+    **kwargs,
+):
+    """
+    Parallel site localisation. Rows whose movable mods were relocalised get
+    their Parsed Modifications replaced by the best-scoring placement; the
+    original is kept in Original_Parsed_Modifications.
+    """
+    needs = df["Parsed Modifications"].apply(
+        lambda m: bool(movable_indices(parse_modifications(m), rules))
+    )
+    target_df = df[needs]
+    n_total = len(target_df)
+
+    df["Original_Parsed_Modifications"] = df["Parsed Modifications"]
+    loc_columns = {
+        "Loc_Status": "no_movable",
+        "Loc_N_Isoforms": 0,
+        "Loc_Original_Sites": "",
+        "Loc_Best_Sites": "",
+        "Loc_Best_Score": np.nan,
+        "Loc_Site_Evidence (N)": "",
+        "Loc_Site_Evidence (C)": "",
+        "Loc_Alt_Sites_Excluded": "",
+        "Loc_Second_Sites": "",
+        "Loc_Second_Score": np.nan,
+        "Loc_Second_Additional_Metrics": "",
+        "Loc_Delta": np.nan,
+        "Loc_Changed": False,
+    }
+    for col, default in loc_columns.items():
+        df[col] = default
+
+    logger.debug(
+        f"[LOCALISE] {n_total} of {len(df)} PSMs carry movable modifications "
+        f"(rules: {rules}, cap: {max_isoforms})"
+    )
+    if n_total == 0:
+        return df
+
+    optimal_batch_size = max(50, n_total // (max_workers * 4))
+    batches = split_dataframe(target_df, n_total // optimal_batch_size)
+
+    final_results = {}
+    done = 0
+
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(localise_batch, batch, rules, max_isoforms, **kwargs): i
+            for i, batch in enumerate(batches)
+        }
+
+        cancelled = False
+        with safe_tqdm(total=n_total, desc="Localising modifications") as pbar:
+            for future in as_completed(futures):
+                try:
+                    batch_results = future.result()
+                    final_results.update(batch_results)
+                except Exception as e:
+                    logger.error(f"Localisation batch failed: {e}")
+                done += len(batches[futures[future]])
+                pbar.update(len(batches[futures[future]]))
+
+                if progress_callback:
+                    progress_callback(
+                        22, f"Localising modifications... {done}/{n_total}"
+                    )
+
+                if cancel_event is not None and cancel_event.is_set():
+                    for f in futures:
+                        f.cancel()
+                    cancelled = True
+                    break
+
+        if cancelled:
+            raise InterruptedError("Rescoring cancelled by user")
+
+    new_mods = {}
+    for idx, res in final_results.items():
+        df.at[idx, "Loc_Status"] = res["status"]
+        df.at[idx, "Loc_N_Isoforms"] = res["n_isoforms"]
+        df.at[idx, "Loc_Original_Sites"] = res.get("original_sites", "")
+        if res["status"] != "ok":
+            continue
+        df.at[idx, "Loc_Best_Sites"] = res["best_sites"]
+        df.at[idx, "Loc_Best_Score"] = res["best_score"]
+        df.at[idx, "Loc_Site_Evidence (N)"] = res["site_evidence_n"]
+        df.at[idx, "Loc_Site_Evidence (C)"] = res["site_evidence_c"]
+        df.at[idx, "Loc_Alt_Sites_Excluded"] = res["alt_excluded"]
+        df.at[idx, "Loc_Second_Sites"] = res["second_sites"]
+        df.at[idx, "Loc_Second_Score"] = res["second_score"]
+        df.at[idx, "Loc_Second_Additional_Metrics"] = res["second_metrics"]
+        df.at[idx, "Loc_Delta"] = res["best_score"] - res["second_score"]
+        # Site strings count stacked copies (S11x2), so S11;S21 -> S11x2 is a change
+        changed = res["best_sites"] != res["original_sites"]
+        df.at[idx, "Loc_Changed"] = changed
+        if abs(res["best_score"] - res["second_score"]) < 1e-9:
+            df.at[idx, "Loc_Status"] = "ambiguous"  # top two placements tie
+        else:
+            df.at[idx, "Loc_Status"] = "relocalised" if changed else "same_localisation"
+        if changed:
+            new_mods[idx] = res["mods"]
+
+    if new_mods:
+        df["Parsed Modifications"] = [
+            new_mods.get(idx, mods)
+            for idx, mods in zip(df.index, df["Parsed Modifications"])
+        ]
+
+    status_counts = df.loc[needs, "Loc_Status"].value_counts().to_dict()
+    logger.debug(
+        f"[LOCALISE] Status: {status_counts}, changed: {int(df['Loc_Changed'].sum())}"
+    )
+
+    return df

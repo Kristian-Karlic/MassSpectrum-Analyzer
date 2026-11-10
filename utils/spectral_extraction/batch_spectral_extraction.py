@@ -9,7 +9,15 @@ from collections import defaultdict
 import pymzml
 import logging
 
-from .core import RawFileManager, create_error_result, build_success_result
+from .core import (
+    RawFileManager,
+    build_success_result,
+    configure_pymzml,
+    create_error_result,
+    read_raw_scan_peaks,
+)
+
+configure_pymzml()
 
 logger = logging.getLogger(__name__)
 
@@ -157,19 +165,21 @@ def _extract_raw_scans_common(file_path, scan_numbers, lightweight=False):
                         continue
 
                     # Get the scan data and header
-                    scan = raw_file.GetCentroidStream(scan_num, False)
+                    masses, intensities = read_raw_scan_peaks(raw_file, scan_num)
                     header = raw_file.GetScanEventForScanNumber(scan_num)
 
-                    if scan.Masses is not None and scan.Intensities is not None:
+                    if masses is not None:
                         header_info = str(header) if header else None
                         found[scan_num] = {
                             "status": "success",
-                            "mz": list(scan.Masses),
-                            "intensity": list(scan.Intensities),
+                            "mz": masses,
+                            "intensity": intensities,
                             "header": header_info,
                         }
                     else:
-                        found[scan_num] = {"status": "error - no centroid data"}
+                        found[scan_num] = {
+                            "status": "error - no peak data (centroid, segmented or profile)"
+                        }
 
                 except Exception as e:
                     found[scan_num] = {"status": f"error - {str(e)}"}

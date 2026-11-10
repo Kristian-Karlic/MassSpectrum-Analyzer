@@ -134,16 +134,23 @@ class DataGatherer:
         for mass, _position in modifications:
             nl_config = central_mod_db.get_neutral_losses_for_mass(mass)
             if nl_config is not None:
-                # Need the labile block to fire if either labile or remainder is requested
-                effective_labile = enable_labile or enable_remainder
+                db_labile = bool(nl_config.get("labile_loss", False))
+                active_labile = enable_labile and db_labile
+                has_remainder = enable_remainder and any(
+                    rm > 0 for rm in nl_config.get("remainder_ions", [])
+                )
                 if central_mod_db.has_active_neutral_loss(
-                    nl_config, effective_labile, enable_mod_nl=enable_mod_nl
+                    nl_config,
+                    active_labile,
+                    enable_mod_nl=enable_mod_nl,
+                    enable_remainder=enable_remainder,
                 ):
                     cfg = dict(nl_config)
-                    # labile_loss drives the block; suppress ~ ion separately via generate_labile_ion
-                    if not effective_labile:
-                        cfg["labile_loss"] = False
-                    cfg["generate_labile_ion"] = enable_labile
+                    # labile_loss drives the ~/^ block in fragmentation, so remainder
+                    # ions need it on even for mods the database does not flag labile.
+                    cfg["labile_loss"] = active_labile or has_remainder
+                    # The ~ ion itself only exists for genuinely labile mods.
+                    cfg["generate_labile_ion"] = active_labile
                     if not enable_remainder:
                         cfg["remainder_ions"] = []
                     if not enable_mod_nl:

@@ -166,28 +166,30 @@ class CentralModificationDatabase:
     #  Predicates
     # ------------------------------------------------------------------
     @staticmethod
+    def _has_positive_mass(value) -> bool:
+        """True if *value* holds a mass > 0.
+
+        *value* may be a list of numbers or a comma-separated string.
+        """
+        if isinstance(value, list):
+            return any(float(x) > 0 for x in value)
+        if isinstance(value, str) and value.strip():
+            return any(float(x) > 0 for x in value.split(",") if x.strip())
+        return False
+
+    @staticmethod
     def has_active_neutral_loss(
-        entry: dict, enable_labile: bool = True, enable_mod_nl: bool = True
+        entry: dict,
+        enable_labile: bool = True,
+        enable_mod_nl: bool = True,
+        enable_remainder: bool = True,
     ) -> bool:
         """Return True if *entry* has at least one active neutral loss or remainder ion."""
-        nl_val = entry.get("neutral_losses", "")
-        # nl_val may be a list of numbers or a comma-separated string
-        if isinstance(nl_val, list):
-            has_nl = (
-                bool(nl_val and any(float(x) > 0 for x in nl_val)) and enable_mod_nl
-            )
-        else:
-            has_nl = (
-                bool(
-                    nl_val
-                    and isinstance(nl_val, str)
-                    and nl_val.strip()
-                    and any(float(x) > 0 for x in nl_val.split(",") if x.strip())
-                )
-                and enable_mod_nl
-            )
+        _positive = CentralModificationDatabase._has_positive_mass
+        has_nl = enable_mod_nl and _positive(entry.get("neutral_losses", ""))
+        has_rm = enable_remainder and _positive(entry.get("remainder_ions", ""))
         has_labile = enable_labile and entry.get("labile_loss", False)
-        return has_nl or has_labile
+        return has_nl or has_rm or has_labile
 
     # ------------------------------------------------------------------
     #  Queries

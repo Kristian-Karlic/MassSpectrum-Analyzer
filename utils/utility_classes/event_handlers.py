@@ -818,31 +818,31 @@ class EventHandlers:
                             nl_symbol_entries.append(
                                 (sym, f"NL{nl_i + 1}", -nl_mass, mod_name)
                             )
-                    if nl_cfg.get("labile_loss", False):
-                        labile = nl_cfg.get("mod_mass", mod_mass)
+                    labile = nl_cfg.get("mod_mass", mod_mass)
+                    if nl_cfg.get("labile_loss", False) and nl_cfg.get(
+                        "generate_labile_ion", True
+                    ):
                         key = ("~", mod_name)
                         if key not in seen:
                             seen.add(key)
                             nl_symbol_entries.append(
                                 ("~", "Labile loss", -labile, mod_name)
                             )
-                        for rm_i, rm_mass in enumerate(
-                            nl_cfg.get("remainder_ions", [])
-                        ):
-                            if rm_mass <= 0:
-                                continue
-                            sym = _rm_tag(rm_i)
-                            key = (sym, mod_name)
-                            if key not in seen:
-                                seen.add(key)
-                                nl_symbol_entries.append(
-                                    (
-                                        sym,
-                                        f"Remainder {rm_i + 1}",
-                                        -labile + rm_mass,
-                                        mod_name,
-                                    )
+                    for rm_i, rm_mass in enumerate(nl_cfg.get("remainder_ions", [])):
+                        if rm_mass <= 0:
+                            continue
+                        sym = _rm_tag(rm_i)
+                        key = (sym, mod_name)
+                        if key not in seen:
+                            seen.add(key)
+                            nl_symbol_entries.append(
+                                (
+                                    sym,
+                                    f"Remainder {rm_i + 1}",
+                                    -labile + rm_mass,
+                                    mod_name,
                                 )
+                            )
             viewer = getattr(
                 getattr(self.main_app, "annotation_tab_manager", None),
                 "mass_spec_viewer",

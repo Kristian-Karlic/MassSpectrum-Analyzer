@@ -107,12 +107,29 @@ The application can import and normalize PSM data from multiple search engines:
 
 ## Requirements for .exe
 - Windows 10/11
-- .NET Framework 4.7.1 (for ThermoFisher raw file support)
+- .NET Framework 4.7.2 or newer (for ThermoFisher raw file support)
+
+**Python does not need to be installed.** The PyInstaller build bundles the
+Python interpreter and every package it needs.
 
 For mzML-only workflows, no .NET runtime is needed. Thermo Fisher `.raw` files
-use pythonnet and Thermo RawFileReader. On Linux/macOS this requires either a
-working Mono runtime for the bundled `Net471` assemblies or a .NET/CoreCLR
-runtime for the bundled .NET Core assemblies.
+use pythonnet and Thermo RawFileReader. On Windows the .NET Framework host is
+part of the operating system, so nothing extra has to be installed. On
+Linux/macOS this requires either a working Mono runtime for the bundled `Net471`
+assemblies or a .NET/CoreCLR runtime for the bundled .NET Core assemblies.
+
+### If .raw files fail with "Failed to resolve Python.Runtime.Loader.Initialize"
+
+Windows marks every file extracted from a downloaded archive as coming from the
+internet, and .NET Framework then refuses to load the bundled assemblies. Fix it
+on the target machine with either of:
+
+- Right-click the downloaded `.zip` → **Properties** → tick **Unblock**, then
+  extract it, or
+- `Get-ChildItem -Recurse "C:\path\to\MassSpectrumAnalyzer" | Unblock-File`
+
+Extract to a local drive; running from a network share or a cloud-synced
+placeholder folder triggers the same failure.
 
 
 Key references

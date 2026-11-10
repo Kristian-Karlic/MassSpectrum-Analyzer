@@ -10,10 +10,111 @@ from utils.rescoring.threaded_fragmentation_functions import (
     count_ion_types_parallel,
     calculate_migration_ratios_parallel,
     calculate_scores_parallel,
+    localise_parallel,
 )
+from utils.rescoring.localisation import format_modified_peptide
 from utils.utilities import DataProcessingUtils
 
 logger = logging.getLogger(__name__)
+
+# Train-FDR thresholds tried in order when mokapot cannot bootstrap its
+# semi-supervised learner at the default 1%.
+_MOKAPOT_TRAIN_FDR_LADDER = (0.01, 0.05, 0.10, 0.25)
+
+# mokapot RuntimeErrors that mean "nothing passed the FDR threshold" rather
+# than a real failure: no startable feature, and no calibratable fold.
+_MOKAPOT_RETRYABLE_ERRORS = (
+    "No PSMs found below",
+    "Failed to calibrate scores",
+)
+
+
+def _make_mokapot_model(mokapot, train_fdr):
+    """Build a fresh grid-searched linear SVM mokapot model.
+
+    A new estimator per attempt — scikit-learn estimators are stateful and
+    mokapot fits them in place.  LinearSVC with a raised ``max_iter`` avoids
+    the IRLS convergence warnings from mokapot's default percolator model.
+    """
+    from sklearn.svm import LinearSVC
+    from sklearn.model_selection import GridSearchCV, KFold
+
+    svm = LinearSVC(dual=False, max_iter=5000, random_state=7)
+    cv_model = GridSearchCV(
+        svm,
+        param_grid={"C": [0.1, 1, 10]},
+        refit=False,
+        cv=KFold(3, shuffle=True, random_state=42),
+        n_jobs=-1,
+    )
+    return mokapot.Model(
+        estimator=cv_model,
+        train_fdr=train_fdr,
+        max_iter=10,
+        rng=42,
+    )
+
+
+def _brew_with_fdr_fallback(
+    mokapot, dataset, fallback_scores=None, test_fdr=0.01, folds=3
+):
+    """Run ``mokapot.brew``, widening the train FDR before giving up.
+
+    mokapot needs at least one feature that accepts PSMs below ``train_fdr``
+    to pick its starting positives; on a noisy or decoy-rich run a hard 1%
+    threshold fails outright with ``RuntimeError("No PSMs found below the
+    'eval_fdr'.")``.  Each looser threshold in ``_MOKAPOT_TRAIN_FDR_LADDER``
+    is tried in turn.  If none works, PSMs are ranked directly by
+    *fallback_scores* (the rescore), which still yields q-values and PEPs —
+    just without the learned model.
+
+    Returns ``(results, models, trained)``; *models* is ``None`` and *trained*
+    ``False`` when the direct-score fallback was used.
+    """
+    for train_fdr in _MOKAPOT_TRAIN_FDR_LADDER:
+        try:
+            results, models = mokapot.brew(
+                dataset,
+                model=_make_mokapot_model(mokapot, train_fdr),
+                test_fdr=test_fdr,
+                folds=folds,
+                rng=42,
+            )
+        except RuntimeError as exc:
+            # Raised by mokapot when targets and decoys do not separate at this
+            # threshold; anything else is a real failure.
+            if not any(frag in str(exc) for frag in _MOKAPOT_RETRYABLE_ERRORS):
+                raise
+            logger.debug(
+                f"[MOKAPOT] Targets and decoys do not separate at "
+                f"train_fdr={train_fdr:.0%} ({exc}) - widening threshold"
+            )
+            continue
+        if train_fdr != _MOKAPOT_TRAIN_FDR_LADDER[0]:
+            logger.warning(
+                f"[MOKAPOT] Trained at train_fdr={train_fdr:.0%} because no "
+                f"feature reached 1% - q-values are less well calibrated"
+            )
+        return results, models, True
+
+    if fallback_scores is None:
+        raise RuntimeError(
+            "Mokapot could not find any feature separating targets from decoys "
+            f"at up to {_MOKAPOT_TRAIN_FDR_LADDER[-1]:.0%} FDR, and no fallback "
+            "score was available"
+        )
+
+    logger.warning(
+        "[MOKAPOT] No feature separates targets from decoys at up to "
+        f"{_MOKAPOT_TRAIN_FDR_LADDER[-1]:.0%} FDR - falling back to q-values "
+        "from the rescore alone (no semi-supervised model)"
+    )
+    results = dataset.assign_confidence(
+        scores=np.asarray(fallback_scores, dtype=float),
+        desc=True,
+        eval_fdr=test_fdr,
+    )
+    return results, None, False
 
 
 class RescoringWorker(QThread):
@@ -104,6 +205,50 @@ class RescoringWorker(QThread):
             enable_remainder=self.enable_remainder,
             enable_mod_nl=self.enable_mod_nl,
         )
+
+    def _assign_glycan_compositions(self, df, glycan_settings):
+        """Add Glycan / Glycan_Composition columns for PSMs whose modification
+        mass matches an entry in the glycan database (same lookup as the
+        annotation tab's auto-select)."""
+        from utils.peak_matching.constants import load_custom_monosaccharides
+        from utils.peak_matching.fragmentation import find_matching_glycan
+
+        mass_lookup, _ = load_custom_monosaccharides()
+        glycan_compositions = glycan_settings.get("compositions", [])
+        tolerance_da = glycan_settings.get("tolerance_da", 0.02)
+        match_cache = {}
+
+        def _match(parsed_mods):
+            if parsed_mods is None or isinstance(parsed_mods, float):
+                return None
+            if isinstance(parsed_mods, str):
+                import ast as _ast
+
+                try:
+                    parsed_mods = _ast.literal_eval(parsed_mods)
+                except Exception:
+                    return None
+            mod_masses = []
+            for mod in parsed_mods or []:
+                try:
+                    mod_masses.append(float(mod[0]))
+                except (TypeError, ValueError, IndexError, KeyError):
+                    continue
+            key = tuple(sorted(round(m, 4) for m in mod_masses))
+            if key not in match_cache:
+                match_cache[key] = find_matching_glycan(
+                    mod_masses, glycan_compositions, mass_lookup, tolerance_da
+                )
+            return match_cache[key]
+
+        matches = df["Parsed Modifications"].apply(_match)
+        df["Glycan"] = matches.apply(lambda m: m[1] if m else None)
+        df["Glycan_Composition"] = matches.apply(lambda m: m[2] if m else None)
+        logger.debug(
+            f"[RESCORING] Glycan Y-ions: {df['Glycan'].notna().sum()} of "
+            f"{len(df)} PSMs matched a glycan composition"
+        )
+        return df
 
     def run(self):
         """Run the rescoring process"""
@@ -223,6 +368,10 @@ class RescoringWorker(QThread):
             def ensure_list_format(value):
                 if isinstance(value, list):
                     return value
+                elif isinstance(value, (np.ndarray, tuple)):
+                    # Extraction returns float64 arrays; dropping them here
+                    # leaves every PSM with an empty spectrum.
+                    return list(value)
                 elif isinstance(value, str):
                     import ast
 
@@ -310,11 +459,48 @@ class RescoringWorker(QThread):
                     f"[RESCORING] Mod-NL configs: {active_count} PSMs have active definitions"
                 )
 
+            # Detect glycan modifications per PSM for glycan Y-ion calculation
+            glycan_settings = self.options.get("glycan_settings", {})
+            glycan_enabled = glycan_settings.get("enabled", False) and (
+                "Parsed Modifications" in filtered_df.columns
+            )
+            fragment_ions = list(self.selected_ions)
+            if glycan_enabled:
+                filtered_df = self._assign_glycan_compositions(
+                    filtered_df, glycan_settings
+                )
+                if "GlycanY" not in fragment_ions:
+                    fragment_ions.append("GlycanY")
+
+            # Base ion types (Mod-NL sub-types are added after matching; they
+            # never contribute to Rescore, so localisation can rank on these)
+            ion_types_to_count = self._base_ion_types_to_count()
+
+            # === Step 3b: Site localisation ===
+            localisation_settings = self.options.get("localisation_settings", {})
+            if localisation_settings.get("enabled") and localisation_settings.get(
+                "rules"
+            ):
+                loc_start = time.time()
+                self.progress_update.emit(22, "Localising modifications...")
+                filtered_df = self._localise_sites(
+                    filtered_df,
+                    localisation_settings,
+                    normalized_custom_ions,
+                    fragment_ions,
+                    glycan_settings.get("max_charge") if glycan_enabled else None,
+                    list(ion_types_to_count),
+                )
+                self._raise_if_cancelled()
+                timings["Site localisation"] = self._log_step(
+                    "Site localisation", loc_start
+                )
+
             processed_df = process_fragments(
                 filtered_df,
                 custom_ion_series=normalized_custom_ions,
                 diagnostic_ions=self.diagnostic_ions,
-                selected_ions=self.selected_ions,
+                selected_ions=fragment_ions,
                 selected_internal_ions=self.selected_internal_ions,
                 ppm_tolerance=self.options["ppm_tolerance"],
                 max_workers=cores,
@@ -324,6 +510,9 @@ class RescoringWorker(QThread):
                 isotope_max=self.options.get("isotope_max", 4),
                 progress_callback=lambda v, m: self.progress_update.emit(v, m),
                 cancel_event=self._cancel_event,
+                glycan_max_charge=(
+                    glycan_settings.get("max_charge") if glycan_enabled else None
+                ),
             )
             self._raise_if_cancelled()
 
@@ -345,35 +534,6 @@ class RescoringWorker(QThread):
                 65, f"Counting ion types for {len(processed_df)} PSMs..."
             )
 
-            # Build comprehensive ion type list
-            ion_types_to_count = list(
-                set(
-                    [
-                        (
-                            ion.split("-")[0]
-                            if "-" in ion and ion not in ["z+1", "c-1"]
-                            else ion
-                        )
-                        for ion in self.selected_ions
-                    ]
-                )
-            )
-
-            if self.selected_internal_ions:
-                for internal_ion in self.selected_internal_ions:
-                    if not internal_ion.startswith("int-"):
-                        ion_types_to_count.append(f"int-{internal_ion}")
-                    else:
-                        ion_types_to_count.append(internal_ion)
-
-            if self.custom_ion_series:
-                for custom_ion in self.custom_ion_series:
-                    series_name = custom_ion.get(
-                        "name", custom_ion.get("Series Name", "")
-                    )
-                    if series_name and series_name not in ion_types_to_count:
-                        ion_types_to_count.append(series_name)
-
             # Discover granular Mod-NL sub-types from matched fragments
             mod_nl_subtypes = []
             if self.central_mod_db is not None:
@@ -385,6 +545,12 @@ class RescoringWorker(QThread):
                     )
 
             self.mod_nl_subtypes = mod_nl_subtypes
+
+            # Glycan Y-ions are counted but kept out of the Rescore so that
+            # glycopeptide scores stay comparable with non-glycosylated PSMs.
+            ion_types_to_score = list(ion_types_to_count)
+            if glycan_enabled:
+                ion_types_to_count.append("GlycanY")
 
             processed_df = count_ion_types_parallel(
                 processed_df,
@@ -449,7 +615,7 @@ class RescoringWorker(QThread):
 
             processed_df = calculate_scores_parallel(
                 processed_df,
-                ion_types_to_use=ion_types_to_count,
+                ion_types_to_use=ion_types_to_score,
                 max_workers=cores,
                 scoring_methods=self.scoring_methods,
                 ppm_tolerance=self.options["ppm_tolerance"],
@@ -544,6 +710,91 @@ class RescoringWorker(QThread):
             error_msg = f"{str(e)}\n\n{traceback.format_exc()}"
             logger.error(f"Rescoring failed: {error_msg}")
             self.rescoring_error.emit(error_msg)
+
+    def _base_ion_types_to_count(self):
+        """Ion types selected for counting/scoring, before Mod-NL discovery."""
+        ion_types_to_count = list(
+            set(
+                [
+                    (
+                        ion.split("-")[0]
+                        if "-" in ion and ion not in ["z+1", "c-1"]
+                        else ion
+                    )
+                    for ion in self.selected_ions
+                ]
+            )
+        )
+
+        if self.selected_internal_ions:
+            for internal_ion in self.selected_internal_ions:
+                if not internal_ion.startswith("int-"):
+                    ion_types_to_count.append(f"int-{internal_ion}")
+                else:
+                    ion_types_to_count.append(internal_ion)
+
+        if self.custom_ion_series:
+            for custom_ion in self.custom_ion_series:
+                series_name = custom_ion.get("name", custom_ion.get("Series Name", ""))
+                if series_name and series_name not in ion_types_to_count:
+                    ion_types_to_count.append(series_name)
+
+        return ion_types_to_count
+
+    def _localise_sites(
+        self,
+        df,
+        localisation_settings,
+        normalized_custom_ions,
+        fragment_ions,
+        glycan_max_charge,
+        ion_types_to_score,
+    ):
+        """Move relocalisable mods to their best-scoring sites (by Rescore)."""
+        rules = localisation_settings["rules"]
+        df = localise_parallel(
+            df,
+            rules,
+            localisation_settings.get("max_isoforms", 500),
+            max_workers=self.options["cores"],
+            progress_callback=lambda v, m: self.progress_update.emit(v, m),
+            cancel_event=self._cancel_event,
+            custom_ion_series=normalized_custom_ions,
+            diagnostic_ions=self.diagnostic_ions,
+            selected_ions=fragment_ions,
+            selected_internal_ions=self.selected_internal_ions,
+            max_neutral_losses=self.max_neutral_losses,
+            calculate_isotopes=self.options.get("calculate_isotopes", False),
+            isotope_max=self.options.get("isotope_max", 4),
+            glycan_max_charge=glycan_max_charge,
+            ppm_tolerance=self.options["ppm_tolerance"],
+            ion_types_to_use=ion_types_to_score,
+            scoring_max_charge=self.options.get("scoring_max_charge", 0),
+            scoring_nl_in_count=self.options.get("scoring_nl_in_count", False),
+        )
+
+        # Rewrite Modified Peptide canonically for every PSM with movable mods,
+        # so the same peptidoform has one string whether or not its sites moved
+        has_movable = df["Loc_Status"] != "no_movable"
+        if has_movable.any():
+            if "Modified Peptide" in df.columns:
+                df["Original_Modified_Peptide"] = df["Modified Peptide"]
+            df.loc[has_movable, "Modified Peptide"] = [
+                format_modified_peptide(pep, self._as_mod_list(mods))
+                for pep, mods in zip(
+                    df.loc[has_movable, "Peptide"],
+                    df.loc[has_movable, "Parsed Modifications"],
+                )
+            ]
+        return df
+
+    @staticmethod
+    def _as_mod_list(mods):
+        if isinstance(mods, str):
+            import ast as _ast
+
+            return _ast.literal_eval(mods) if mods else []
+        return mods or []
 
     def _discover_mod_nl_subtypes(self, processed_df):
         """Scan matched fragments to discover all unique Mod-NL sub-types.
@@ -724,6 +975,11 @@ class RescoringWorker(QThread):
                 f"Found {n_target} targets, {n_decoy} decoys."
             )
 
+        logger.debug(
+            f"[MOKAPOT] {n_target} targets, {n_decoy} decoys "
+            f"({n_decoy / len(df):.1%} decoy)"
+        )
+
         if len(df) < 200:
             logger.debug(
                 f"[MOKAPOT] Warning: only {len(df)} PSMs - results may be unreliable"
@@ -841,28 +1097,16 @@ class RescoringWorker(QThread):
             feature_columns=feature_cols,
         )
 
-        # 5. Run brew (semi-supervised learning + confidence estimation)
-        #    Use custom SVM with higher max_iter to avoid IRLS convergence warnings
-        from sklearn.svm import LinearSVC
-        from sklearn.model_selection import GridSearchCV, KFold
-
-        svm = LinearSVC(dual=False, max_iter=5000, random_state=7)
-        param_grid = {"C": [0.1, 1, 10]}
-        cv_model = GridSearchCV(
-            svm,
-            param_grid=param_grid,
-            refit=False,
-            cv=KFold(3, shuffle=True, random_state=42),
-            n_jobs=-1,
+        # 5. Run brew (semi-supervised learning + confidence estimation).
+        #    Falls back to looser train FDRs, then to ranking by Rescore, so a
+        #    run mokapot cannot bootstrap still gets q-values.
+        fallback_scores = (
+            pd.to_numeric(df["Rescore"], errors="coerce").fillna(0).values
+            if "Rescore" in df.columns
+            else None
         )
-        model = mokapot.Model(
-            estimator=cv_model,
-            train_fdr=0.01,
-            max_iter=10,
-            rng=42,
-        )
-        results, models = mokapot.brew(
-            dataset, model=model, test_fdr=0.01, folds=3, rng=42
+        results, _models, mokapot_trained = _brew_with_fdr_fallback(
+            mokapot, dataset, fallback_scores=fallback_scores, test_fdr=0.01, folds=3
         )
 
         # 6. Write results to temp files and read back for merge
@@ -939,8 +1183,10 @@ class RescoringWorker(QThread):
         fdr_01 = (target_df["mokapot_qvalue"] <= 0.01).sum()
         fdr_05 = (target_df["mokapot_qvalue"] <= 0.05).sum()
         total_targets = len(target_df)
+        mode = "model" if mokapot_trained else "rescore-only fallback"
         logger.debug(
-            f"[MOKAPOT] Complete: {fdr_01} target PSMs at 1% FDR, {fdr_05} at 5% FDR (of {total_targets} total targets)"
+            f"[MOKAPOT] Complete ({mode}): {fdr_01} target PSMs at 1% FDR, "
+            f"{fdr_05} at 5% FDR (of {total_targets} total targets)"
         )
 
         return df

@@ -548,7 +548,9 @@ class InteractivePlotWidget(QWidget):
             margin=dict(l=60, r=30, t=50, b=50),
         )
 
-        html = fig.to_html(include_plotlyjs="cdn", full_html=True)
+        # Embed plotly.js rather than pulling it from a CDN so the plots render
+        # on machines with no internet access.
+        html = fig.to_html(include_plotlyjs=True, full_html=True)
         self.web_view.setHtml(html)
 
     # ------------------------------------------------------------------

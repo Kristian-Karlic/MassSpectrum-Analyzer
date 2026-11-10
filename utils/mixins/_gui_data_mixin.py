@@ -214,22 +214,13 @@ class _GUIDataMixin:
             return False
 
         from utils.peak_matching.constants import load_custom_monosaccharides
+        from utils.peak_matching.fragmentation import find_matching_glycan
 
         mass_lookup, _ = load_custom_monosaccharides()
 
-        best_match = None
-        for name, composition in self.glycan_compositions:
-            glycan_mass = self._calculate_glycan_composition_mass(composition, mass_lookup)
-            if glycan_mass is None:
-                continue
-            for mod_mass in mod_masses:
-                delta = abs(mod_mass - glycan_mass)
-                if delta > tolerance_da:
-                    continue
-                candidate = (delta, name, composition, mod_mass, glycan_mass)
-                if best_match is None or candidate < best_match:
-                    best_match = candidate
-
+        best_match = find_matching_glycan(
+            mod_masses, self.glycan_compositions, mass_lookup, tolerance_da
+        )
         if best_match is None:
             return False
 

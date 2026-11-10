@@ -34,5 +34,118 @@
     "enable_mod_nl": true,
     "enable_labile_losses": false,
     "enable_remainder_ions": false
+  },
+  "HCD-N-Glyco": {
+    "normal": [
+      "b",
+      "y",
+      "MH"
+    ],
+    "neutral": [],
+    "custom_ions": [],
+    "diagnostic_ions": [
+      {
+        "Name": "HexNAc",
+        "HTML Name": "HexNAc",
+        "Mass": 204.0866485,
+        "Color": "#ff007f"
+      },
+      {
+        "Name": "Hex-HexNAc",
+        "HTML Name": "Hex-HexNAc",
+        "Mass": 366.14,
+        "Color": "#ff007f"
+      },
+      {
+        "Name": "HexNAc(1)Hex(1)NeuAc(1)",
+        "HTML Name": "HexNAc-Hex-NeuAc",
+        "Mass": 657.2349,
+        "Color": "#ff007f"
+      },
+      {
+        "Name": "NeuAc – H2O",
+        "HTML Name": "NeuAc–H<sub>2</sub>O",
+        "Mass": 274.0921,
+        "Color": "#ff007f"
+      },
+      {
+        "Name": "NeuAc",
+        "HTML Name": "NeuAc",
+        "Mass": 292.1027,
+        "Color": "#ff007f"
+      },
+      {
+        "Name": "HexNAc – CH6O3",
+        "HTML Name": "HexNAc – CH<sub>6</sub>O<sub>3</sub><br>",
+        "Mass": 138.055,
+        "Color": "#ff007f"
+      },
+      {
+        "Name": "HexNAc – 2H2O",
+        "HTML Name": "HexNAc–2H<sub>2</sub>O",
+        "Mass": 168.066,
+        "Color": "#ff007f"
+      },
+      {
+        "Name": "HexNAcHex(2)",
+        "HTML Name": "HexNAcHex(2)",
+        "Mass": 528.1912,
+        "Color": "#ff007f"
+      }
+    ],
+    "enable_mod_nl": true,
+    "enable_labile_losses": true,
+    "enable_remainder_ions": true,
+    "glycan_y_enabled": true,
+    "glycan_composition": "HexNAc(6)Hex(6)Fuc(2)  (2482.91 Da)",
+    "glycan_max_charge": 4,
+    "glycan_snfg_enabled": false
+  },
+  "HCD-ADP-r": {
+    "normal": [
+      "b",
+      "y"
+    ],
+    "neutral": [],
+    "custom_ions": [],
+    "diagnostic_ions": [
+      {
+        "Name": "ADPr-136",
+        "HTML Name": "ADPr-136",
+        "Mass": 136.06232,
+        "Color": "#ff007f"
+      },
+      {
+        "Name": "ADPr-250",
+        "HTML Name": "ADPr-250",
+        "Mass": 250.09401,
+        "Color": "#ff007f"
+      },
+      {
+        "Name": "ADPr-348",
+        "HTML Name": "ADPr-348",
+        "Mass": 348.07036,
+        "Color": "#ff007f"
+      },
+      {
+        "Name": "ADPr-428",
+        "HTML Name": "ADPr-428",
+        "Mass": 428.03669,
+        "Color": "#ff007f"
+      },
+      {
+        "Name": "ADPr-584",
+        "HTML Name": "ADPr-584",
+        "Mass": 584.09018,
+        "Color": "#ff007f"
+      }
+    ],
+    "enable_mod_nl": true,
+    "enable_labile_losses": false,
+    "enable_remainder_ions": true,
+    "glycan_y_enabled": false,
+    "glycan_composition": "",
+    "glycan_max_charge": 4,
+    "glycan_snfg_enabled": false
   }
 }

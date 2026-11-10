@@ -1098,6 +1098,13 @@
     "neutral_losses": "",
     "remainder_ions": "203.0794"
   },
+  "+27.0235": {
+    "is_glycan": false,
+    "labile_loss": false,
+    "mass": 27.023475,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
   "+2701.9833": {
     "is_glycan": false,
     "labile_loss": true,
@@ -1658,6 +1665,13 @@
     "neutral_losses": "",
     "remainder_ions": "203.0794"
   },
+  "+436.2256": {
+    "is_glycan": false,
+    "labile_loss": true,
+    "mass": 436.225622,
+    "neutral_losses": "437.2329",
+    "remainder_ions": "437.2329"
+  },
   "+4393.5500": {
     "is_glycan": false,
     "labile_loss": true,
@@ -1672,11 +1686,32 @@
     "neutral_losses": "",
     "remainder_ions": ""
   },
+  "+442.2633": {
+    "is_glycan": false,
+    "labile_loss": true,
+    "mass": 442.263337,
+    "neutral_losses": "284.1418",
+    "remainder_ions": "284.1418"
+  },
   "+483.2053": {
     "is_glycan": false,
     "labile_loss": false,
     "mass": 483.20526,
     "neutral_losses": "311.142,283.136",
+    "remainder_ions": ""
+  },
+  "+484.0396": {
+    "is_glycan": false,
+    "labile_loss": false,
+    "mass": 484.03964,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "+52.0789": {
+    "is_glycan": false,
+    "labile_loss": false,
+    "mass": 52.078919,
+    "neutral_losses": "",
     "remainder_ions": ""
   },
   "+552.2167": {
@@ -1700,6 +1735,13 @@
     "neutral_losses": "",
     "remainder_ions": "203.0794"
   },
+  "+583.0717": {
+    "is_glycan": false,
+    "labile_loss": false,
+    "mass": 583.0717,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
   "+59.0371": {
     "is_glycan": false,
     "labile_loss": false,
@@ -1711,6 +1753,20 @@
     "is_glycan": false,
     "labile_loss": false,
     "mass": 71.0735,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "+71.0968": {
+    "is_glycan": false,
+    "labile_loss": false,
+    "mass": 71.09677,
+    "neutral_losses": "",
+    "remainder_ions": ""
+  },
+  "+72.0937": {
+    "is_glycan": false,
+    "labile_loss": false,
+    "mass": 72.09373,
     "neutral_losses": "",
     "remainder_ions": ""
   },
@@ -1819,12 +1875,19 @@
     "neutral_losses": "",
     "remainder_ions": ""
   },
+  "ADPr": {
+    "is_glycan": false,
+    "labile_loss": true,
+    "mass": 541.061112,
+    "neutral_losses": "135.05,249.09,347.06,427.03,583.08",
+    "remainder_ions": ""
+  },
   "AETMA": {
     "is_glycan": false,
     "labile_loss": false,
     "mass": 84.1054,
     "neutral_losses": "59.07377",
-    "remainder_ions": ""
+    "remainder_ions": "25.03164"
   },
   "ATCC19606_gylcan": {
     "is_glycan": false,
@@ -1881,6 +1944,13 @@
     "mass": 794.3066,
     "neutral_losses": "",
     "remainder_ions": ""
+  },
+  "DMEDA": {
+    "is_glycan": false,
+    "labile_loss": false,
+    "mass": 70.089491,
+    "neutral_losses": "45.0578",
+    "remainder_ions": "25.031641"
   },
   "Dimethylation": {
     "is_glycan": false,
